@@ -24,8 +24,7 @@ async fn main() -> std::io::Result<()> {
         .unwrap_or(Env::Dev); // default dev env if absent
 
     match env {
-        Env::Prod => {}, // load in CI
-        Env::Stg => dotenvy::from_path(Path::new("src/server/env/.env.stg")).expect(DOTENV_LOADING_FAILED_MSG),
+        Env::Prod | Env::Stg => {}, // load in CI
         Env::Dev => dotenvy::from_path(Path::new("src/server/env/.env.dev")).expect(DOTENV_LOADING_FAILED_MSG),
     };
 
