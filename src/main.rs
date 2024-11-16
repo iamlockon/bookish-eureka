@@ -1,9 +1,8 @@
 //! application entry point
 
-use std::cmp::{Ordering, PartialOrd};
+use std::cmp::PartialOrd;
 use std::env;
-use std::fmt::{Display, Formatter, Pointer};
-use std::net::{Ipv4Addr, SocketAddrV4};
+use std::net::SocketAddrV4;
 use std::path::Path;
 use std::str::FromStr;
 use log::info;
@@ -11,9 +10,9 @@ use crate::server::model::config::ServerConfig;
 
 mod server;
 
-const DOTENV_LOADING_FAILED_MSG: &'static str = "failed to load envs from dotenv files, aborting";
-const HOST_PARSING_FAILED_MSG: &'static str = "failed to parse HOST, aborting";
-const HOST_DEFAULT_ADDR: &'static str = "127.0.0.1:8080";
+const DOTENV_LOADING_FAILED_MSG: &str = "failed to load envs from dotenv files, aborting";
+const HOST_PARSING_FAILED_MSG: &str = "failed to parse HOST, aborting";
+const HOST_DEFAULT_ADDR: &str = "127.0.0.1:8080";
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
