@@ -1,0 +1,31 @@
+[package]
+name = "server"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# Api Server
+actix-web = { version = "4.9.0", features = ["default"] }
+actix-web-validation = { version = "0.5.1", features = ["validator"] }
+
+# Utilities
+dotenvy = { version = "0.15.7"}
+env_logger = "0.11.5"
+log = "0.4.22"
+
+# Serde
+serde = { version = "1.0.215", features = ["derive"] }
+serde_json = "1.0.132"
+
+# Error Handling
+anyhow = "1.0.93"
+
+# Observability
+tracing = "0.1.40"
+
+# Other binary configuration
+
+[[bin]]
+name = "client"
+path = "src/bin/client.rs"
