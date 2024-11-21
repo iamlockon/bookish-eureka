@@ -1,11 +1,10 @@
 use crate::server::model::bill::{Bill, GetBillsResponse, PostBillsRequest, PostBillsResponse};
 use crate::server::state::AppState;
 use crate::server::util::time;
-use actix_web::{get, post, web, HttpRequest, Responder};
+use actix_web::{get, post, web, Responder};
 use chrono::{DateTime, Utc};
-use futures_util::{pin_mut, Stream};
 use log::{error, info, warn};
-use tokio_postgres::types::{ToSql, Type};
+use tokio_postgres::types::ToSql;
 
 #[get("/v1/bills")]
 async fn get_bills(data: web::Data<&AppState>) -> impl Responder {
