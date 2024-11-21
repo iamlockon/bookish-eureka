@@ -1,18 +1,21 @@
 //! application entry point
 
-use std::cmp::PartialOrd;
+extern crate core;
+
+use crate::server::model::config::ServerConfig;
+use log::info;
 use std::env;
 use std::net::SocketAddrV4;
 use std::path::Path;
 use std::str::FromStr;
-use log::info;
-use crate::server::model::config::ServerConfig;
 
 mod server;
 
 const DOTENV_LOADING_FAILED_MSG: &str = "failed to load envs from dotenv files, aborting";
 const HOST_PARSING_FAILED_MSG: &str = "failed to parse HOST, aborting";
 const HOST_DEFAULT_ADDR: &str = "127.0.0.1:8080";
+const DB_READ_POOL_CONN_STR: &str = "postgresql://postgres:pass@localhost";
+const DB_WRITE_POOL_CONN_STR: &str = "postgresql://postgres:pass@localhost";
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -24,16 +27,28 @@ async fn main() -> std::io::Result<()> {
         .unwrap_or(Env::Dev); // default dev env if absent
 
     match env {
-        Env::Prod | Env::Stg => {}, // load in CI
-        Env::Dev => dotenvy::from_path(Path::new("src/server/env/.env.dev")).expect(DOTENV_LOADING_FAILED_MSG),
+        Env::Prod | Env::Stg => {} // load in CI
+        Env::Dev => dotenvy::from_path(Path::new("src/server/env/.env.dev"))
+            .expect(DOTENV_LOADING_FAILED_MSG),
     };
 
     // b. logging
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
     // c. run app
+    let (db_read_conn_string, db_write_conn_string) = (
+        env::var("DB_READ_POOL_CONN_STR").unwrap_or(DB_READ_POOL_CONN_STR.to_string()),
+        env::var("DB_WRITE_POOL_CONN_STR").unwrap_or(DB_WRITE_POOL_CONN_STR.to_string()),
+    );
     let config = ServerConfig::new(
-        SocketAddrV4::from_str(env::var("HOST").unwrap_or(HOST_DEFAULT_ADDR.to_string()).as_str()).expect(HOST_PARSING_FAILED_MSG),
+        SocketAddrV4::from_str(
+            env::var("HOST")
+                .unwrap_or(HOST_DEFAULT_ADDR.to_string())
+                .as_str(),
+        )
+        .expect(HOST_PARSING_FAILED_MSG),
+        db_read_conn_string,
+        db_write_conn_string,
     );
 
     info!("App is starting in env={:?}", env);
@@ -41,7 +56,8 @@ async fn main() -> std::io::Result<()> {
     server::run(config).await
 }
 
-#[derive(Debug, PartialOrd, PartialEq)]
+#[derive(Debug)]
+#[non_exhaustive]
 enum Env {
     Dev,
     Stg,
