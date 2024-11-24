@@ -2,6 +2,6 @@ use serde::Serialize;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct Item {
-    pub name: String,
-    pub price: u32,
+    pub id: u32,
+    pub name: String
 }

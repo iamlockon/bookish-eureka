@@ -1,1 +1,2 @@
-pub mod bills;
+pub mod bill;
+pub mod table;

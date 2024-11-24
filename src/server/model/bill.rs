@@ -1,34 +1,40 @@
 use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Serialize)]
-pub(crate) struct GetBillsResponse {
-    pub result_code: Option<String>,
-    pub bills: Vec<Bill>,
-}
+use crate::server::model::item::Item;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct GetBillResponse {
     pub result_code: Option<String>,
-    pub bills: Bill,
+    pub bill: Option<Bill>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct Bill {
+pub(crate) struct Bill {
     pub id: i64,
-    pub table_id: i16,
-    pub created_at: String,
-    pub updated_at: Option<String>,
-    pub checkout_at: Option<String>,
-    pub customer_count: i16,
+    pub items: Vec<Item>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct PostBillItemsRequest {
+    pub items: Vec<ItemModification>,
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct PostBillsResponse {
+pub(crate) struct PostBillItemsResponse {
     pub result_code: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct PostBillsRequest {
-    pub table_id: i16,
-    pub customer_count: i16,
+pub(crate) struct DeleteBillItemsRequest {
+    pub items: Vec<i32>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DeleteBillItemsResponse {
+    pub result_code: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ItemModification {
+    pub id: i32,
+    pub count: i16,
 }

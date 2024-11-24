@@ -1,3 +1,11 @@
+-- table in the restaurant
+CREATE TABLE IF NOT EXISTS "table" (
+    id smallserial PRIMARY KEY,
+    seats smallserial NOT NULL,
+    bill_id bigint
+);
+
+
 -- bill for tables
 CREATE TABLE IF NOT EXISTS bill (
      id bigserial PRIMARY KEY,
@@ -5,7 +13,8 @@ CREATE TABLE IF NOT EXISTS bill (
      created_at timestamptz NOT NULL, -- index
      updated_at timestamptz,
      checkout_at timestamptz, -- index
-     customer_count smallserial NOT NULL
+     customer_count smallserial NOT NULL,
+     CONSTRAINT fk_table_id FOREIGN KEY(table_id) REFERENCES "table"(id) ON DELETE CASCADE
 );
 
 -- for querying tables with item list
@@ -35,9 +44,12 @@ CREATE TABLE IF NOT EXISTS bill_item (
 -- for joining item list from bill table, including menu_item_id for covering index, so that we can do aggregation quicker
 CREATE INDEX IF NOT EXISTS item_list_idx on bill_item(bill_id, menu_item_id);
 
--- table in the restaurant
-CREATE TABLE IF NOT EXISTS "table" (
-    id smallserial PRIMARY KEY,
-    seats smallserial NOT NULL,
-    name varchar(16)
-);
+
+-- init "table" with some tables 
+INSERT INTO "table"(id, seats)
+VALUES
+    (1, 4),
+    (2, 4),
+    (3, 4),
+    (4, 4),
+    (5, 4)
