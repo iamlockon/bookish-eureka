@@ -1,17 +1,17 @@
 use crate::server::model::bill::{Bill, DeleteBillItemsRequest, DeleteBillItemsResponse, GetBillResponse, ItemModification, PostBillItemsRequest, PostBillItemsResponse};
 use crate::server::state::AppState;
-use crate::server::util::time;
-use actix_web::{delete, get, post, web, HttpRequest, Responder};
+use actix_web::{delete, get, post, web, HttpRequest, HttpResponse, Responder};
 use anyhow::Context;
-use chrono::{DateTime, Utc};
-use log::{error, info, warn};
+use chrono::{Utc};
+use log::{error, warn};
 use tokio_postgres::types::ToSql;
+use crate::server::controller::error::CustomError;
 use crate::server::model::CommonRequestParams;
 use crate::server::model::item::Item;
 
 #[post("/v1/bill/{id}/items")]
 /// Add bill associated items
-async fn post_bill_items(id: web::Path<i64>, body: web::Json<PostBillItemsRequest>, data: web::Data<&AppState>) -> impl Responder {
+async fn post_bill_items(id: web::Path<i64>, body: web::Json<PostBillItemsRequest>, data: web::Data<&AppState>) -> Result<impl Responder, CustomError> {
     const COLUMN_LEN: usize = 3;
     if let Some(conn) = data.get_db_read_pool().acquire().await {
         let mut stmt = "INSERT INTO bill_item(bill_id, menu_item_id, count) VALUES".to_string();
@@ -28,36 +28,19 @@ async fn post_bill_items(id: web::Path<i64>, body: web::Json<PostBillItemsReques
             .execute(&stmt, &params.as_slice())
             .await
         {
-            Ok(_) => {
-                (
-                    web::Json(PostBillItemsResponse {
-                    result_code: None,
-                }),
-                    http::StatusCode::OK
-                )
-            }
+            Ok(_) => Ok(HttpResponse::Ok()),
             Err(e) => {
                 warn!("post_bill_items failed, {}", e);
-                (
-                    web::Json(PostBillItemsResponse {
-                        result_code: Some("F0000".to_string()),
-                    }),
-                    http::StatusCode::INTERNAL_SERVER_ERROR,
-                )
+                Err(CustomError::DbError)
             }
         };
     }
-    (
-        web::Json(PostBillItemsResponse {
-            result_code: Some("S1234".to_string()),
-        }),
-        http::StatusCode::TOO_MANY_REQUESTS,
-    )
+    Err(CustomError::ServerIsBusy)
 }
 
 #[delete("/v1/bill/{id}/items")]
 /// Remove some bill associated items
-async fn delete_bill_items(id: web::Path<i64>, body: web::Json<DeleteBillItemsRequest>, data: web::Data<&AppState>) -> impl Responder {
+async fn delete_bill_items(id: web::Path<i64>, body: web::Json<DeleteBillItemsRequest>, data: web::Data<&AppState>) -> Result<impl Responder, CustomError> {
 
     if let Some(conn) = data.get_db_read_pool().acquire().await {
         let mut ids = Vec::with_capacity(body.items.len());
@@ -70,46 +53,23 @@ async fn delete_bill_items(id: web::Path<i64>, body: web::Json<DeleteBillItemsRe
             .execute(&stmt,  &[])
             .await
         {
-            Ok(_) => {
-                (
-                    web::Json(DeleteBillItemsResponse {
-                        result_code: None,
-                    }),
-                    http::StatusCode::OK
-                )
-            }
+            Ok(_) => Ok(HttpResponse::Ok()),
             Err(e) => {
                 warn!("post_bill_items failed, {}", e);
-                (
-                    web::Json(DeleteBillItemsResponse {
-                        result_code: Some("F0000".to_string()),
-                    }),
-                    http::StatusCode::INTERNAL_SERVER_ERROR,
-                )
+                Err(CustomError::DbError)
             }
         };
     }
-    (
-        web::Json(DeleteBillItemsResponse {
-            result_code: Some("S1234".to_string()),
-        }),
-        http::StatusCode::TOO_MANY_REQUESTS,
-    )
+    Err(CustomError::ServerIsBusy)
 }
 
 #[get("/v1/bill/{id}/items")]
 /// get bill items
-async fn get_bill_items(id: web::Path<i64>, req: HttpRequest, data: web::Data<&AppState>) -> impl Responder {
+async fn get_bill_items(id: web::Path<i64>, req: HttpRequest, data: web::Data<&AppState>) -> Result<impl Responder, CustomError> {
     if let Some(conn) = data.get_db_read_pool().acquire().await {
         let maybe_queries = web::Query::<CommonRequestParams>::from_query(req.query_string()).context("failed to parse query string");
         if maybe_queries.is_err() {
-            return (
-                web::Json(GetBillResponse {
-                    result_code: None,
-                    bill: None,
-                }),
-                http::StatusCode::BAD_REQUEST
-            );
+            return Err(CustomError::BadRequest);
         }
         let CommonRequestParams {
             page: maybe_page, 
@@ -140,37 +100,22 @@ async fn get_bill_items(id: web::Path<i64>, req: HttpRequest, data: web::Data<&A
                     }
                 ).collect::<Vec<_>>();
                 
-                (
-                    web::Json(GetBillResponse {
-                        result_code: None,
-                        bill: match items.is_empty() {
-                            true => None,
-                            false => Some(Bill {
-                                id: id.into_inner(),
-                                items,
-                            })
-                        },
-                    }),
-                    http::StatusCode::OK,
-                )
+                Ok(web::Json(GetBillResponse {
+                    result_code: None,
+                    bill: match items.is_empty() {
+                        true => None,
+                        false => Some(Bill {
+                            id: id.into_inner(),
+                            items,
+                        })
+                    },
+                }))
             }
             Err(e) => {
                 error!("get_bills failed, {}", e);
-                (
-                    web::Json(GetBillResponse {
-                        result_code: Some("F0000".to_string()),
-                        bill: None
-                    }),
-                    http::StatusCode::INTERNAL_SERVER_ERROR,
-                )
+                Err(CustomError::DbError)
             }
         };
     }
-    (
-        web::Json(GetBillResponse {
-            result_code: Some("S1234".to_string()),
-            bill: None,
-        }),
-        http::StatusCode::TOO_MANY_REQUESTS,
-    )
+    Err(CustomError::ServerIsBusy)
 }
