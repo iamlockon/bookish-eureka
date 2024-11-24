@@ -1,7 +1,7 @@
 -- table in the restaurant
 CREATE TABLE IF NOT EXISTS "table" (
     id smallserial PRIMARY KEY,
-    seats smallserial NOT NULL,
+    seats smallint NOT NULL,
     bill_id bigint
 );
 
@@ -9,11 +9,11 @@ CREATE TABLE IF NOT EXISTS "table" (
 -- bill for tables
 CREATE TABLE IF NOT EXISTS bill (
      id bigserial PRIMARY KEY,
-     table_id smallserial NOT NULL, -- index
+     table_id smallint NOT NULL, -- index
      created_at timestamptz NOT NULL, -- index
      updated_at timestamptz,
      checkout_at timestamptz, -- index
-     customer_count smallserial NOT NULL,
+     customer_count smallint NOT NULL,
      CONSTRAINT fk_table_id FOREIGN KEY(table_id) REFERENCES "table"(id) ON DELETE CASCADE
 );
 
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS bill_item (
     id bigserial PRIMARY KEY,
     bill_id bigserial NOT NULL, -- index
     menu_item_id integer NOT NULL, -- index
-    count smallserial NOT NULL,
+    count smallint NOT NULL,
     total_price NUMERIC(5,2) NOT NULL,
     deleted boolean,
     CONSTRAINT fk_bill_id FOREIGN KEY(bill_id) REFERENCES bill(id) ON DELETE CASCADE,

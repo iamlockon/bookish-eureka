@@ -33,10 +33,18 @@ refinery = { version = "0.8", features = ["tokio-postgres"]}
 
 # Synchronization
 tokio = { version = "1.41.1", features = ["rt-multi-thread", "sync", "macros"] }
-time = "0.3.36"
+
+
+## Build client cli
+clap = { version = "4.5.21", features = ["derive"], optional = true }
+reqwest = { version = "0.12.9", features = ["json"], optional = true }
+
+[features]
+build-client = ["clap", "reqwest"]
 
 # Other binary configuration
 
 [[bin]]
 name = "client"
 path = "src/bin/client.rs"
+required-features = ["build-client"]
