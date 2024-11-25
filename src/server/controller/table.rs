@@ -1,10 +1,17 @@
+use std::time::Duration;
 use actix_web::{get, patch, web, Responder, error, Error, ResponseError, HttpResponse};
+use actix_web::rt::time;
+use anyhow::Context;
 use chrono::{Utc};
-use log::{error, warn};
+use futures_util::FutureExt;
+use log::{error, info, warn};
 use tokio_postgres::types::{ToSql, Type};
 use crate::server::controller::error::CustomError;
+use crate::server::controller::error::CustomError::{BadRequest, DbError, Timeout};
 use crate::server::model::table::{GetTablesResponse, PatchTablesRequest, PatchTablesResponse, Table};
 use crate::server::state::AppState;
+
+const TIMEOUT_SECONDS: u64 = 1;
 
 #[patch("/v1/table/{id}")]
 /// occupy a table
@@ -13,48 +20,84 @@ async fn patch_table(
     id: web::Path<i16>,
     data: web::Data<&AppState>,
 ) -> Result<impl Responder, CustomError> {
-    if let Some(conn) = data.get_db_write_pool().acquire().await {
-        let params: &[&(dyn ToSql + Sync); 3] = &[
-            &id.into_inner(),
-            &req.customer_count,
-            &crate::server::util::time::helper::get_utc_now(),
-        ];
-
-        return match conn
-            .client
-            .execute( // TODO: fix with transaction to check table is not taken yet.
-                r#"
-                WITH input(table_id, customer_count, created_at) as (
-                    VALUES ($1::smallint, $2::smallint, $3::timestamptz)
-                ),
-                b as (
-                    INSERT INTO bill(table_id, customer_count, created_at)
-                    SELECT i.table_id, i.customer_count, i.created_at
-                    FROM input i
-                    RETURNING id, table_id
-                )
-                UPDATE "table" ta
-                SET bill_id = b.id
-                FROM b
-                WHERE bill_id IS NULL AND ta.id = b.table_id;
-            "#,
-                params,
-            )
-            .await
-        {
-            Ok(affected_rows) => {
-                if affected_rows == 0_u64 { // table is already occupied.
-                    return Err(CustomError::BadRequest);
+    if let Some(mut conn) = data.get_db_write_pool().acquire().await {
+        match conn.client.transaction().await.context("failed to start transaction") {
+            Ok(txn) => {
+                let id = id.into_inner();
+                let params: &[&(dyn ToSql + Sync)] = &[&id];
+                // check table availability
+                let sleep = time::sleep(Duration::from_secs(TIMEOUT_SECONDS));
+                tokio::pin!(sleep);
+                tokio::select! {
+                    result = txn.query_one(r#"SELECT bill_id FROM "table" WHERE id = $1 FOR UPDATE"#, params) => {
+                        match result {
+                            Ok(table) => {
+                                match table.try_get::<&str, Option<i64>>("bill_id") {
+                                    Ok(Some(bill_id)) => {
+                                        warn!("the table is already taken, bill_id={}", bill_id);
+                                        return Err(BadRequest);
+                                    },
+                                    Ok(None) => {
+                                        info!("table {} is available, continue to prepare table...", id);
+                                    },
+                                    Err(e) => {
+                                        warn!("query error, {}", e);
+                                        return Err(DbError);
+                                    }
+                                }
+                            },
+                            Err(e) => {
+                                error!("failed to query, {}", e);
+                                return Err(DbError);
+                            }
+                        }
+                    },
+                    _ = &mut sleep => {
+                        warn!("timeout when trying to select table for update");
+                        return Err(Timeout);
+                    }
                 }
-                Ok(HttpResponse::Ok())
+
+                // insert bill
+                match txn.query_one(r#"
+                    INSERT INTO bill(table_id, customer_count, created_at)
+                    VALUES ($1, $2, $3)
+                    RETURNING id, table_id
+                "#, &[&id, &req.customer_count, &crate::server::util::time::helper::get_utc_now()]).await {
+                    Ok(row) => {
+                        // bind bill to table
+                        let bill_id = row.get("id");
+                        match txn.execute(r#"
+                            UPDATE "table" ta
+                            SET bill_id = $2
+                            WHERE ta.id = $1
+                        "#, &[&id, &bill_id]).await {
+                            Ok(_) => {
+                                // save the work
+                                txn.commit().await.map_err(|_| DbError)?;
+                                Ok(web::Json(PatchTablesResponse {
+                                    bill_id,
+                                }))
+                            },
+                            Err(e) => {
+                                error!("failed to bind bill to table, {}", e);
+                                Err(DbError)
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        error!("failed to insert bill, {}", e);
+                        Err(DbError)
+                    }
+                }
             },
             Err(e) => {
-                error!("patch_table failed, {}", e);
-                Err(CustomError::DbError)
+                Err(DbError)
             }
-        };
+        }
+    } else {
+        Err(CustomError::ServerIsBusy)
     }
-    Err(CustomError::ServerIsBusy)
 }
 
 #[get("/v1/tables")]
@@ -73,7 +116,7 @@ async fn get_tables(data: web::Data<&AppState>) -> Result<impl Responder, Custom
                     .map(|r| {
                         Table {
                             id: r.get::<&str, i16>("t_id") as u8,
-                            bill_id: r.try_get::<&str, i64>("b_id").ok().map(|id| id as u64),
+                            bill_id: r.try_get::<&str, i64>("b_id").ok(),
                         }
                     })
                     .collect::<Vec<_>>();
