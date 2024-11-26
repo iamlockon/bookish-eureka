@@ -8,15 +8,13 @@ use log::{error, info, warn};
 use tokio_postgres::types::{ToSql, Type};
 use crate::server::controller::error::CustomError;
 use crate::server::controller::error::CustomError::{BadRequest, DbError, Timeout};
-use crate::server::model::table::{GetTablesResponse, PatchTablesRequest, PatchTablesResponse, Table};
+use crate::server::controller::DB_TIMEOUT_SECONDS;
+use crate::server::model::table::{GetTablesResponse, PatchTablesResponse, Table};
 use crate::server::state::AppState;
-
-const TIMEOUT_SECONDS: u64 = 1;
 
 #[patch("/v1/table/{id}")]
 /// occupy a table
 async fn patch_table(
-    req: web::Json<PatchTablesRequest>,
     id: web::Path<i16>,
     data: web::Data<&AppState>,
 ) -> Result<impl Responder, CustomError> {
@@ -26,7 +24,7 @@ async fn patch_table(
                 let id = id.into_inner();
                 let params: &[&(dyn ToSql + Sync)] = &[&id];
                 // check table availability
-                let sleep = time::sleep(Duration::from_secs(TIMEOUT_SECONDS));
+                let sleep = time::sleep(Duration::from_secs(DB_TIMEOUT_SECONDS));
                 tokio::pin!(sleep);
                 tokio::select! {
                     result = txn.query_one(r#"SELECT bill_id FROM "table" WHERE id = $1 FOR UPDATE"#, params) => {
@@ -60,10 +58,10 @@ async fn patch_table(
 
                 // insert bill
                 match txn.query_one(r#"
-                    INSERT INTO bill(table_id, customer_count, created_at)
-                    VALUES ($1, $2, $3)
+                    INSERT INTO bill(table_id, created_at)
+                    VALUES ($1, $2)
                     RETURNING id, table_id
-                "#, &[&id, &req.customer_count, &crate::server::util::time::helper::get_utc_now()]).await {
+                "#, &[&id, &crate::server::util::time::helper::get_utc_now()]).await {
                     Ok(row) => {
                         // bind bill to table
                         let bill_id = row.get("id");

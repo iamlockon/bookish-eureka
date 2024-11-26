@@ -15,17 +15,14 @@ pub(crate) struct Bill {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct PostBillItemsRequest {
-    pub items: Vec<ItemModification>,
+    pub items: Vec<MenuItemId>,
 }
+
+type MenuItemId = i32;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct PostBillItemsResponse {
     pub result_code: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct DeleteBillItemsRequest {
-    pub items: Vec<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -33,8 +30,3 @@ pub(crate) struct DeleteBillItemsResponse {
     pub result_code: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-pub(crate) struct ItemModification {
-    pub id: i32,
-    pub count: i16,
-}

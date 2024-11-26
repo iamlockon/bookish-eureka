@@ -9,6 +9,8 @@ pub(crate) enum CustomError {
     ServerIsBusy,
     #[display("invalid request")]
     BadRequest,
+    #[display("resource not found")]
+    ResourceNotFound,
     #[display("database error")]
     DbError,
     #[display("timeout occurred")]
@@ -20,6 +22,7 @@ impl error::ResponseError for CustomError {
         match *self {
             CustomError::ServerIsBusy | CustomError::DbError => StatusCode::INTERNAL_SERVER_ERROR,
             CustomError::BadRequest => StatusCode::BAD_REQUEST,
+            CustomError::ResourceNotFound => StatusCode::NOT_FOUND,
             CustomError::Timeout => StatusCode::GATEWAY_TIMEOUT,
         }
     }

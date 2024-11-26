@@ -5,10 +5,6 @@ pub(crate) struct PatchTablesResponse {
     pub bill_id: i64,
 }
 
-#[derive(Debug, Deserialize)]
-pub(crate) struct PatchTablesRequest {
-    pub customer_count: i16,
-}
 
 #[derive(Debug, Serialize)]
 pub(crate) struct GetTablesResponse {

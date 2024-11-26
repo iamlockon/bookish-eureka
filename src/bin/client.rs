@@ -1,6 +1,8 @@
+use std::cmp::Ord;
+use std::str::FromStr;
 use clap::{Args, Parser, Subcommand};
 use reqwest::{Client, StatusCode};
-use serde::{Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -41,49 +43,26 @@ struct InitArgs {
 
 #[derive(Debug, Args)]
 struct ItemArgs {
+    #[arg(short = 'b', help = "Bill id to operate", value_parser = clap::value_parser!(i64).range(1..))]
+    bid: i64,
     #[command(subcommand)]
     command: ItemCmds,
-    #[arg(short = 't', help = "Table id to operate")]
-    tid: u8,
 }
 
 #[derive(Debug, Subcommand)]
 enum ItemCmds {
     #[command(arg_required_else_help = true)]
     Add {
-        #[arg(long, help = "Array of items to add.", value_name = "ITEMS", value_parser(parse_item_vec))]
-        items: Vec<Item>,
+        #[arg(long, help = "Array of menu items to add.", value_name = "MENU_ITEM_IDs", num_args = 1..)]
+        items: Vec<i64>,
     },
     #[command(arg_required_else_help = true)]
-    Remove{
-        #[arg(long, help = "Array of items to remove.", value_name = "ITEMS", value_parser(parse_item_vec))]
-        items: Vec<Item>,
+    Remove {
+        #[arg(long, help = "Id of menu item to remove.", value_name = "MENU_ITEM_ID")]
+        id: i64,
     },
     #[command(arg_required_else_help = true)]
     List,
-}
-
-#[derive(Debug, Args)]
-struct ItemAddArgs {
-    #[arg(long, help = "Array of items to add.", value_name = "ITEMS", value_parser(parse_item_vec))]
-    items: Vec<Item>,
-}
-
-#[derive(Debug, Args)]
-struct ItemRemoveArgs {
-    #[arg(long, help = "Array of items to remove.", value_name = "ITEMS", value_parser(parse_item_vec))]
-    items: Vec<Item>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct Item {
-    id: u16,
-    count: u16,
-}
-
-fn parse_item_vec(val: &str) -> Result<Vec<Item>, String> {
-    let rules = serde_json::from_str(val).map_err(|e| e.to_string())?;
-    Ok(rules)
 }
 
 const HOST: &str = "http://localhost:8080";
@@ -105,9 +84,6 @@ async fn main() -> Result<(), anyhow::Error> {
                     println!("initializing table={} for customers", id);
                     let res = Client::new()
                         .patch(format!("{}/{}", HOST, "v1/table/") + &id.to_string())
-                        .json(&serde_json::json!({
-                            "customer_count": 4,
-                        }))
                         .send()
                         .await?;
                     match res.status() {
@@ -124,7 +100,54 @@ async fn main() -> Result<(), anyhow::Error> {
                     }
                 },
                 TableCmds::Item(args) => {
+                    let bill_id = args.bid;
+                    match args.command {
+                        ItemCmds::Add { items: menu_ids } => {
+                            println!("adding items to bill={}", bill_id);
+                            let res = Client::new()
+                                .post(format!("{}/{}", HOST, format!("v1/bill/{}/items", bill_id)))
+                                .json(&serde_json::json!({
+                                    "items": menu_ids,
+                                }))
+                                .send()
+                                .await?;
+                            match res.status() {
+                                StatusCode::OK => {
+                                    println!("Successfully added items to bill id = {}", bill_id);
+                                },
+                                StatusCode::BAD_REQUEST => {
+                                    println!("Failed to add items to bill id = {}", bill_id);
+                                }
+                                unexpected => {
+                                    println!("got unexpected status code, {}", unexpected);
+                                },
+                            }
+                        },
+                        ItemCmds::Remove { id } => {
+                            println!("removing items from bill={}", bill_id);
+                            let res = Client::new()
+                                .delete(format!("{}/{}", HOST, format!("v1/bill/{}/item/{}", bill_id, id)))
+                                .send()
+                                .await?;
+                            match res.status() {
+                                StatusCode::OK => {
+                                    println!("Successfully removed items from bill id = {}", bill_id);
+                                },
+                                StatusCode::BAD_REQUEST => {
+                                    println!("Bad request");
+                                },
+                                StatusCode::NOT_FOUND => {
+                                    println!("Resource not found");
+                                },
+                                unexpected => {
+                                    println!("got unexpected status code, {}", unexpected);
+                                },
+                            }
+                        },
+                        ItemCmds::List => {
 
+                        },
+                    }
                 }
             }
         }
