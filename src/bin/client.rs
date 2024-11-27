@@ -1,8 +1,8 @@
-use std::cmp::Ord;
-use std::str::FromStr;
+use std::fmt::Formatter;
 use clap::{Args, Parser, Subcommand};
+use derive_more::Display;
 use reqwest::{Client, StatusCode};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize};
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -13,7 +13,6 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 }
-
 
 #[derive(Parser, Debug)]
 enum Commands {
@@ -43,7 +42,7 @@ struct InitArgs {
 
 #[derive(Debug, Args)]
 struct ItemArgs {
-    #[arg(short = 'b', help = "Bill id to operate", value_parser = clap::value_parser!(i64).range(1..))]
+    #[arg(short = 'b', help = "Bill id to operate", value_name = "BILL_ID", value_parser = clap::value_parser!(i64).range(1..))]
     bid: i64,
     #[command(subcommand)]
     command: ItemCmds,
@@ -61,7 +60,6 @@ enum ItemCmds {
         #[arg(long, help = "Id of menu item to remove.", value_name = "MENU_ITEM_ID")]
         id: i64,
     },
-    #[command(arg_required_else_help = true)]
     List,
 }
 
@@ -70,6 +68,40 @@ const HOST: &str = "http://localhost:8080";
 #[derive(Debug, Deserialize)]
 pub(crate) struct TableInitResponse {
     pub bill_id: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct GetBillResponse {
+    pub bill: Option<Bill>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct Bill {
+    pub id: i64,
+    pub items: Items,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct Items(Vec<Item>);
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct Item {
+    pub id: i64,
+    pub name: String
+}
+
+impl Display for Items {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.0.is_empty() {
+            return write!(f, "[]");
+        }
+        for (i, item) in self.0.iter().enumerate() {
+            write!(f, "\n")?;
+            let maybe_comma = if i == self.0.len() - 1 { "" } else { ", " };  
+            write!(f, "{{ id: {}, name: {} }}{}", item.id, item.name, maybe_comma)?;
+        }
+        Ok(())
+    }
 }
 
 #[tokio::main]
@@ -145,7 +177,26 @@ async fn main() -> Result<(), anyhow::Error> {
                             }
                         },
                         ItemCmds::List => {
-
+                            println!("listing items from bill={}", bill_id);
+                            let res = Client::new()
+                                .get(format!("{}/{}", HOST, format!("v1/bill/{}", bill_id)))
+                                .send()
+                                .await?;
+                            match res.status() {
+                                StatusCode::OK => {
+                                    let items = res.json::<GetBillResponse>().await?;
+                                    println!("items for bill = [{}] => {}", bill_id, items.bill.map(|b|b.items).unwrap_or(Items::default()));
+                                },
+                                StatusCode::BAD_REQUEST => {
+                                    println!("Bad request");
+                                },
+                                StatusCode::NOT_FOUND => {
+                                    println!("Resource not found");
+                                },
+                                unexpected => {
+                                    println!("got unexpected status code, {}", unexpected);
+                                },
+                            }
                         },
                     }
                 }

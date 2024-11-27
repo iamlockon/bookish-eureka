@@ -11,7 +11,7 @@ use crate::server::model::config::ServerConfig;
 use crate::server::state::AppState;
 use actix_web::{middleware::Logger, web, App, HttpServer};
 use std::sync::{Arc, OnceLock};
-use crate::server::controller::bill::{delete_bill_items, get_bill_items, post_bill_items};
+use crate::server::controller::bill::{delete_bill_items, get_bill, post_bill_items};
 use crate::server::controller::table::{get_tables, patch_table};
 
 static APP_STATE: OnceLock<AppState> = OnceLock::new();
@@ -47,7 +47,7 @@ pub async fn run(
             .wrap(Logger::default())
             .app_data(app_state.clone())
             .service(get_tables)
-            .service(get_bill_items)
+            .service(get_bill)
             .service(patch_table)
             .service(post_bill_items)
             .service(delete_bill_items)

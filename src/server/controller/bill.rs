@@ -14,16 +14,16 @@ use crate::server::model::item::Item;
 #[post("/v1/bill/{id}/items")]
 /// Add bill associated items
 async fn post_bill_items(id: web::Path<i64>, body: web::Json<PostBillItemsRequest>, data: web::Data<&AppState>) -> Result<impl Responder, CustomError> {
-    const COLUMN_LEN: usize = 2;
-    if let Some(conn) = data.get_db_read_pool().acquire().await {
-        let mut stmt = "INSERT INTO bill_item(bill_id, menu_item_id) VALUES".to_string();
+    const COLUMN_LEN: usize = 3;
+    if let Some(conn) = data.get_db_write_pool().acquire().await {
+        let mut stmt = "INSERT INTO bill_item(bill_id, menu_item_id, state) VALUES".to_string();
         let mut idx = 1;
         let mut params: Vec<&(dyn ToSql + Sync)> = Vec::with_capacity(body.items.len() * COLUMN_LEN);
         let id = id.into_inner();
         for (i, menu_item_id) in body.items.iter().enumerate() {
             let maybe_comma = if i != body.items.len() - 1 { "," } else { "" };
-            stmt.extend(format!(" (${}, ${}){}", idx, idx+1, maybe_comma).chars());
-            params.extend(&[&id as &(dyn ToSql + Sync), menu_item_id as &(dyn ToSql + Sync)]);
+            stmt.extend(format!(" (${}, ${}, ${}){}", idx, idx+1, idx+2, maybe_comma).chars());
+            params.extend(&[&id as &(dyn ToSql + Sync), menu_item_id as &(dyn ToSql + Sync), &"created"]);
             idx += COLUMN_LEN;
         }
         return match conn
@@ -46,7 +46,7 @@ async fn post_bill_items(id: web::Path<i64>, body: web::Json<PostBillItemsReques
 async fn delete_bill_items(path: web::Path<(i64, i32)>, data: web::Data<&AppState>) -> Result<impl Responder, CustomError> {
     let (id, item_id) = path.into_inner();
     let params: &[&(dyn ToSql + Sync)] = &[&id, &item_id];
-    if let Some(conn) = data.get_db_read_pool().acquire().await {
+    if let Some(conn) = data.get_db_write_pool().acquire().await {
         let sleep = time::sleep(Duration::from_secs(DB_TIMEOUT_SECONDS));
         tokio::pin!(sleep);
         return tokio::select! {
@@ -80,9 +80,9 @@ async fn delete_bill_items(path: web::Path<(i64, i32)>, data: web::Data<&AppStat
     Err(CustomError::ServerIsBusy)
 }
 
-#[get("/v1/bill/{id}/items")]
+#[get("/v1/bill/{id}")]
 /// get bill items
-async fn get_bill_items(id: web::Path<i64>, req: HttpRequest, data: web::Data<&AppState>) -> Result<impl Responder, CustomError> {
+async fn get_bill(id: web::Path<i64>, req: HttpRequest, data: web::Data<&AppState>) -> Result<impl Responder, CustomError> {
     if let Some(conn) = data.get_db_read_pool().acquire().await {
         let maybe_queries = web::Query::<CommonRequestParams>::from_query(req.query_string()).context("failed to parse query string");
         if maybe_queries.is_err() {
@@ -93,16 +93,17 @@ async fn get_bill_items(id: web::Path<i64>, req: HttpRequest, data: web::Data<&A
             page_size: maybe_page_size
         } = maybe_queries.unwrap().into_inner();
         let (page, page_size) = (maybe_page.unwrap_or(0), maybe_page_size.unwrap_or(20));
+        let id = id.into_inner();
         return match conn.client.query(r##"
             SELECT b.id, mi.name
             FROM bill_item b
             JOIN menu_item mi
             ON b.menu_item_id = mi.id
-            WHERE bill_id = $1
+            WHERE bill_id = $1 AND b.state IS DISTINCT FROM 'deleted'
             OFFSET $2
             LIMIT $3
             ;
-        "##, &[&(page as i32) as &(dyn ToSql + Sync), &(page_size as i32) as &(dyn ToSql + Sync)]).await {
+        "##, &[&id, &(page as i64) as &(dyn ToSql + Sync), &(page_size as i64) as &(dyn ToSql + Sync)]).await {
             Ok(rows) => {
                 let items = rows.into_iter().map_while(|r|
                     match (r.try_get("id"), r.try_get("name")) {
@@ -118,11 +119,10 @@ async fn get_bill_items(id: web::Path<i64>, req: HttpRequest, data: web::Data<&A
                 ).collect::<Vec<_>>();
                 
                 Ok(web::Json(GetBillResponse {
-                    result_code: None,
                     bill: match items.is_empty() {
                         true => None,
                         false => Some(Bill {
-                            id: id.into_inner(),
+                            id,
                             items,
                         })
                     },

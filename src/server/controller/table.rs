@@ -1,11 +1,9 @@
 use std::time::Duration;
-use actix_web::{get, patch, web, Responder, error, Error, ResponseError, HttpResponse};
+use actix_web::{get, patch, web, Responder};
 use actix_web::rt::time;
 use anyhow::Context;
-use chrono::{Utc};
-use futures_util::FutureExt;
 use log::{error, info, warn};
-use tokio_postgres::types::{ToSql, Type};
+use tokio_postgres::types::{ToSql};
 use crate::server::controller::error::CustomError;
 use crate::server::controller::error::CustomError::{BadRequest, DbError, Timeout};
 use crate::server::controller::DB_TIMEOUT_SECONDS;
@@ -90,6 +88,7 @@ async fn patch_table(
                 }
             },
             Err(e) => {
+                error!("db error, {}", e);
                 Err(DbError)
             }
         }
