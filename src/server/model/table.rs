@@ -8,7 +8,6 @@ pub(crate) struct PatchTablesResponse {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct GetTablesResponse {
-    pub result_code: Option<String>,
     pub tables: Option<Vec<Table>>, 
 }
 

@@ -17,7 +17,8 @@ async fn patch_table(
     data: web::Data<&AppState>,
 ) -> Result<impl Responder, CustomError> {
     if let Some(mut conn) = data.get_db_write_pool().acquire().await {
-        match conn.client.transaction().await.context("failed to start transaction") {
+        let client = conn.client.as_mut().unwrap();
+        match client.transaction().await.context("failed to start transaction") {
             Ok(txn) => {
                 let id = id.into_inner();
                 let params: &[&(dyn ToSql + Sync)] = &[&id];
@@ -101,7 +102,8 @@ async fn patch_table(
 /// get tables
 async fn get_tables(data: web::Data<&AppState>) -> Result<impl Responder, CustomError> {
     if let Some(conn) = data.get_db_read_pool().acquire().await {
-        return match conn.client.query(r##"
+        let client = conn.client.as_ref().unwrap();
+        return match client.query(r##"
             SELECT t.id as t_id, b.id as b_id, CASE WHEN b.id IS NULL THEN 'Y' ELSE 'N' END AS availabie
             FROM "table" t
             LEFT JOIN bill b
@@ -119,13 +121,12 @@ async fn get_tables(data: web::Data<&AppState>) -> Result<impl Responder, Custom
                     .collect::<Vec<_>>();
 
                     Ok(web::Json(GetTablesResponse {
-                        result_code: None,
                         tables: Some(tables),
                     }))
             }
             Err(e) => {
                 error!("get_tables failed, {}", e);
-                Err(CustomError::DbError)
+                Err(DbError)
             }
         };
     }

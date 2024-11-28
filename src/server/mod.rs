@@ -6,7 +6,7 @@ pub mod model;
 mod state;
 pub(crate) mod util;
 
-use crate::server::database::pool::PgPool;
+use crate::server::database::pool::{Pool};
 use crate::server::model::config::ServerConfig;
 use crate::server::state::AppState;
 use actix_web::{middleware::Logger, web, App, HttpServer};
@@ -25,18 +25,14 @@ pub async fn run(
     }: ServerConfig,
 ) -> std::io::Result<()> {
     // init app state, only one thread
+    let mut read_pool = Pool::new().await.unwrap();
+    read_pool.init(db_read_pool_conn_str).await.ok();
+    let mut write_pool = Pool::new().await.unwrap();
+    write_pool.init(db_write_pool_conn_str).await.ok();
     APP_STATE
         .set(AppState::new(
-            Arc::new(
-                PgPool::new(db_read_pool_conn_str)
-                    .await
-                    .expect("failed to init db pool for read"),
-            ),
-            Arc::new(
-                PgPool::new(db_write_pool_conn_str)
-                    .await
-                    .expect("failed to init db pool for write"),
-            ),
+            read_pool,
+            write_pool,
         ))
         .ok();
 

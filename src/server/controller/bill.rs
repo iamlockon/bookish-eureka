@@ -26,8 +26,8 @@ async fn post_bill_items(id: web::Path<i64>, body: web::Json<PostBillItemsReques
             params.extend(&[&id as &(dyn ToSql + Sync), menu_item_id as &(dyn ToSql + Sync), &"created"]);
             idx += COLUMN_LEN;
         }
-        return match conn
-            .client
+        let client = conn.client.as_ref().unwrap();
+        return match client
             .execute(&stmt, &params.as_slice())
             .await
         {
@@ -49,8 +49,9 @@ async fn delete_bill_items(path: web::Path<(i64, i32)>, data: web::Data<&AppStat
     if let Some(conn) = data.get_db_write_pool().acquire().await {
         let sleep = time::sleep(Duration::from_secs(DB_TIMEOUT_SECONDS));
         tokio::pin!(sleep);
+        let client = conn.client.as_ref().unwrap();
         return tokio::select! {
-            result = conn.client.execute(r#"
+            result = client.execute(r#"
                 UPDATE bill_item SET state = 'deleted'
                 WHERE id = (
                     SELECT id
@@ -94,7 +95,8 @@ async fn get_bill(id: web::Path<i64>, req: HttpRequest, data: web::Data<&AppStat
         } = maybe_queries.unwrap().into_inner();
         let (page, page_size) = (maybe_page.unwrap_or(0), maybe_page_size.unwrap_or(20));
         let id = id.into_inner();
-        return match conn.client.query(r##"
+        let client = conn.client.as_ref().unwrap();
+        return match client.query(r##"
             SELECT b.id, mi.name
             FROM bill_item b
             JOIN menu_item mi

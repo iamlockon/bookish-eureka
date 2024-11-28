@@ -2,7 +2,7 @@ use std::fmt::Formatter;
 use clap::{Args, Parser, Subcommand};
 use derive_more::Display;
 use reqwest::{Client, StatusCode};
-use serde::{Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -33,6 +33,7 @@ enum TableCmds {
     Init(InitArgs),
     #[command(arg_required_else_help = true)]
     Item(ItemArgs),
+    List
 }
 
 #[derive(Debug, Args)]
@@ -66,13 +67,27 @@ enum ItemCmds {
 const HOST: &str = "http://localhost:8080";
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct TableInitResponse {
+struct TableInitResponse {
     pub bill_id: i64,
 }
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct GetBillResponse {
+struct GetBillResponse {
     pub bill: Option<Bill>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct GetTablesResponse {
+    pub tables: Tables,
+}
+
+#[derive(Debug, Deserialize)]
+struct Tables(Option<Vec<Table>>);
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct Table {
+    pub id: u8,
+    pub bill_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -103,6 +118,22 @@ impl Display for Items {
         Ok(())
     }
 }
+
+impl Display for Tables {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.0.is_none() || self.0.as_ref().unwrap().is_empty() {
+            return write!(f, "[]");
+        }
+        let tables = self.0.as_ref().unwrap();
+        for (i, table) in tables.iter().enumerate() {
+            write!(f, "\n")?;
+            let maybe_comma = if i == tables.len() - 1 { "" } else { ", " };
+            write!(f, "{{ id: {}, bill_id: {} }}{}", table.id, table.bill_id.map_or_else(|| "".to_string(), |v| v.to_string()), maybe_comma)?;
+        }
+        Ok(())
+    }
+}
+
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -197,6 +228,28 @@ async fn main() -> Result<(), anyhow::Error> {
                                     println!("got unexpected status code, {}", unexpected);
                                 },
                             }
+                        },
+                    }
+                },
+                TableCmds::List => {
+                    println!("Listing tables =>");
+                    let res = Client::new()
+                        .get(format!("{}/{}", HOST, format!("v1/tables")))
+                        .send()
+                        .await?;
+                    match res.status() {
+                        StatusCode::OK => {
+                            let tables = res.json::<GetTablesResponse>().await?.tables;
+                            println!("{}", tables);
+                        },
+                        StatusCode::BAD_REQUEST => {
+                            println!("Bad request");
+                        },
+                        StatusCode::NOT_FOUND => {
+                            println!("Resource not found");
+                        },
+                        unexpected => {
+                            println!("got unexpected status code, {}", unexpected);
                         },
                     }
                 }
