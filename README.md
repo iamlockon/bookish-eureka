@@ -6,20 +6,18 @@ This is an attempt to create a production-ready application.
 - server: http server to process requests from the client.
 - client: cli to interact with the server.
 
-## Features
-- Oauth2 for client authentication
 ## Requirements
 - [ ] The client (the restaurant staff “devices” making the requests) MUST be able to:
-  - [ ] add one or more items with a table number
-  - [ ] remove an item for a table
+  - [x] add one or more items with a table number
+  - [x] remove an item for a table
   - [ ] query the items still remaining for a table.
-- [ ] The application MUST, upon creation request, store
+- [x] The application MUST, upon creation request, store
   - [ ] the item, the table number, and how long the item will take to cook.
-- [ ] The application MUST, upon deletion request, remove a specified item for a specified table number.
-- [ ] The application MUST, upon query request, show all items for a specified table number.
-- [ ] The application MUST, upon query request, show a specified item for a specified table number.
+- [x] The application MUST, upon deletion request, remove a specified item for a specified table number.
+- [x] The application MUST, upon query request, show all items for a specified table number.
+- [x] The application MUST, upon query request, show a specified item for a specified table number.
 - [ ] The application MUST accept at least 10 simultaneous incoming add/remove/query requests.
-- [ ] The server API MUST fully follow REST API principles and present a set of HTTP endpoints to connect to.
+- [x] The server API MUST fully follow REST API principles and present a set of HTTP endpoints to connect to.
 
 ## Usage
 

@@ -1954,6 +1954,7 @@ dependencies = [
  "env_logger",
  "futures-executor",
  "log",
+ "rand",
  "refinery",
  "reqwest",
  "serde",

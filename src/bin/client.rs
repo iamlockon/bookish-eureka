@@ -102,7 +102,8 @@ struct Items(Vec<Item>);
 #[derive(Debug, Deserialize)]
 pub(crate) struct Item {
     pub id: i64,
-    pub name: String
+    pub name: String,
+    pub time_to_deliver: i32,
 }
 
 impl Display for Items {
@@ -113,7 +114,7 @@ impl Display for Items {
         for (i, item) in self.0.iter().enumerate() {
             write!(f, "\n")?;
             let maybe_comma = if i == self.0.len() - 1 { "" } else { ", " };  
-            write!(f, "{{ id: {}, name: {} }}{}", item.id, item.name, maybe_comma)?;
+            write!(f, "{{ id: {}, name: {}, time_to_deliver: {} mins }}{}", item.id, item.name, item.time_to_deliver, maybe_comma)?;
         }
         Ok(())
     }
@@ -128,7 +129,7 @@ impl Display for Tables {
         for (i, table) in tables.iter().enumerate() {
             write!(f, "\n")?;
             let maybe_comma = if i == tables.len() - 1 { "" } else { ", " };
-            write!(f, "{{ id: {}, bill_id: {} }}{}", table.id, table.bill_id.map_or_else(|| "".to_string(), |v| v.to_string()), maybe_comma)?;
+            write!(f, "{{ id: {}, bill_id: {} }}{}", table.id, table.bill_id.map_or_else(|| "x".to_string(), |v| v.to_string()), maybe_comma)?;
         }
         Ok(())
     }

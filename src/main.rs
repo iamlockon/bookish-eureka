@@ -13,9 +13,9 @@ mod server;
 
 const DOTENV_LOADING_FAILED_MSG: &str = "failed to load envs from dotenv files, aborting";
 const HOST_PARSING_FAILED_MSG: &str = "failed to parse HOST, aborting";
-const HOST_DEFAULT_ADDR: &str = "127.0.0.1:8080";
-const DB_READ_POOL_CONN_STR: &str = "postgresql://postgres:pass@localhost";
-const DB_WRITE_POOL_CONN_STR: &str = "postgresql://postgres:pass@localhost";
+const DEFAULT_HOST_ADDR: &str = "127.0.0.1:8080";
+const DEFAULT_DB_READ_POOL_CONN_STR: &str = "postgresql://postgres:pass@localhost";
+const DEFAULT_DB_WRITE_POOL_CONN_STR: &str = "postgresql://postgres:pass@localhost";
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -37,13 +37,13 @@ async fn main() -> std::io::Result<()> {
 
     // c. run app
     let (db_read_conn_string, db_write_conn_string) = (
-        env::var("DB_READ_POOL_CONN_STR").unwrap_or(DB_READ_POOL_CONN_STR.to_string()),
-        env::var("DB_WRITE_POOL_CONN_STR").unwrap_or(DB_WRITE_POOL_CONN_STR.to_string()),
+        env::var("DB_READ_POOL_CONN_STR").unwrap_or(DEFAULT_DB_READ_POOL_CONN_STR.to_string()),
+        env::var("DB_WRITE_POOL_CONN_STR").unwrap_or(DEFAULT_DB_WRITE_POOL_CONN_STR.to_string()),
     );
     let config = ServerConfig::new(
         SocketAddrV4::from_str(
             env::var("HOST")
-                .unwrap_or(HOST_DEFAULT_ADDR.to_string())
+                .unwrap_or(DEFAULT_HOST_ADDR.to_string())
                 .as_str(),
         )
         .expect(HOST_PARSING_FAILED_MSG),

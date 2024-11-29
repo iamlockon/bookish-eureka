@@ -1,3 +1,4 @@
+use std::ops::{Deref, RangeInclusive};
 use std::time::Duration;
 use crate::server::model::bill::{Bill, GetBillResponse, PostBillItemsRequest};
 use crate::server::state::AppState;
@@ -5,6 +6,8 @@ use actix_web::{delete, get, post, web, HttpRequest, HttpResponse, Responder};
 use actix_web::rt::time;
 use anyhow::Context;
 use log::{error, warn};
+use rand::Rng;
+use tokio_postgres::error::SqlState;
 use tokio_postgres::types::ToSql;
 use crate::server::controller::error::CustomError;
 use crate::server::controller::DB_TIMEOUT_SECONDS;
@@ -14,18 +17,27 @@ use crate::server::model::item::Item;
 #[post("/v1/bill/{id}/items")]
 /// Add bill associated items
 async fn post_bill_items(id: web::Path<i64>, body: web::Json<PostBillItemsRequest>, data: web::Data<&AppState>) -> Result<impl Responder, CustomError> {
-    const COLUMN_LEN: usize = 3;
+    const COLUMN_LEN: usize = 5;
+    const TIME_TO_DELIVER_RANGE: RangeInclusive<i32> = 5..=15;
     if let Some(conn) = data.get_db_write_pool().acquire().await {
-        let mut stmt = "INSERT INTO bill_item(bill_id, menu_item_id, state) VALUES".to_string();
+        let mut stmt = "INSERT INTO bill_item(bill_id, menu_item_id, state, time_to_deliver, created_at) VALUES".to_string();
         let mut idx = 1;
         let mut params: Vec<&(dyn ToSql + Sync)> = Vec::with_capacity(body.items.len() * COLUMN_LEN);
         let id = id.into_inner();
+        let rand_v = (0..body.items.len()).fold(Vec::with_capacity(body.items.len()), |mut acc, _| {
+            acc.push(rand::thread_rng().gen_range(TIME_TO_DELIVER_RANGE));
+            acc
+        }).into_iter().collect::<Vec<_>>();
+        let created_at = crate::server::util::time::get_utc_now();
         for (i, menu_item_id) in body.items.iter().enumerate() {
             let maybe_comma = if i != body.items.len() - 1 { "," } else { "" };
-            stmt.extend(format!(" (${}, ${}, ${}){}", idx, idx+1, idx+2, maybe_comma).chars());
-            params.extend(&[&id as &(dyn ToSql + Sync), menu_item_id as &(dyn ToSql + Sync), &"created"]);
+            stmt.extend(format!(" (${}, ${}, ${}, ${}, ${}){}", idx, idx+1, idx+2, idx+3, idx+4, maybe_comma).chars());
+            let rand = rand::thread_rng().gen_range(TIME_TO_DELIVER_RANGE);
+            let cur_params = [&id as &(dyn ToSql + Sync), menu_item_id as &(dyn ToSql + Sync), &"created", &rand_v[i], &created_at];
+            params.extend(cur_params.into_iter());
             idx += COLUMN_LEN;
         }
+
         let client = conn.client.as_ref().unwrap();
         return match client
             .execute(&stmt, &params.as_slice())
@@ -33,7 +45,15 @@ async fn post_bill_items(id: web::Path<i64>, body: web::Json<PostBillItemsReques
         {
             Ok(_) => Ok(HttpResponse::Ok()),
             Err(e) => {
-                warn!("post_bill_items failed, {}", e);
+                match e.code().unwrap() {
+                    &SqlState::FOREIGN_KEY_VIOLATION => {
+                        warn!("the requested bill or menu item does not exist");
+                        return Err(CustomError::BadRequest);
+                    },
+                    code => {
+                        error!("unhandled db error, code={:?}", code);
+                    },
+                }
                 Err(CustomError::DbError)
             }
         };
@@ -97,7 +117,7 @@ async fn get_bill(id: web::Path<i64>, req: HttpRequest, data: web::Data<&AppStat
         let id = id.into_inner();
         let client = conn.client.as_ref().unwrap();
         return match client.query(r##"
-            SELECT b.id, mi.name
+            SELECT b.id, mi.name, b.time_to_deliver
             FROM bill_item b
             JOIN menu_item mi
             ON b.menu_item_id = mi.id
@@ -108,10 +128,10 @@ async fn get_bill(id: web::Path<i64>, req: HttpRequest, data: web::Data<&AppStat
         "##, &[&id, &(page as i64) as &(dyn ToSql + Sync), &(page_size as i64) as &(dyn ToSql + Sync)]).await {
             Ok(rows) => {
                 let items = rows.into_iter().map_while(|r|
-                    match (r.try_get("id"), r.try_get("name")) {
-                        (Ok(id), Ok(name)) => {
+                    match (r.try_get("id"), r.try_get("name"), r.try_get("time_to_deliver")) {
+                        (Ok(id), Ok(name), Ok(time_to_deliver)) => {
                             Some(Item {
-                                id, name
+                                id, name, time_to_deliver
                             })
                         },
                         _ => {
