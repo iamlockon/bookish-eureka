@@ -12,15 +12,17 @@ pub(crate) enum CustomError {
     #[display("resource not found")]
     ResourceNotFound,
     #[display("database error")]
-    DbError,
+    DbError(tokio_postgres::Error),
     #[display("timeout occurred")]
     Timeout,
+    #[display("unknown")]
+    Unknown
 }
 
 impl error::ResponseError for CustomError {
     fn status_code(&self) -> StatusCode {
         match *self {
-            CustomError::ServerIsBusy | CustomError::DbError => StatusCode::INTERNAL_SERVER_ERROR,
+            CustomError::ServerIsBusy | CustomError::DbError(_) | CustomError::Unknown => StatusCode::INTERNAL_SERVER_ERROR,
             CustomError::BadRequest => StatusCode::BAD_REQUEST,
             CustomError::ResourceNotFound => StatusCode::NOT_FOUND,
             CustomError::Timeout => StatusCode::GATEWAY_TIMEOUT,

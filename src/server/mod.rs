@@ -10,7 +10,7 @@ use crate::server::database::pool::{Pool};
 use crate::server::model::config::ServerConfig;
 use crate::server::state::AppState;
 use actix_web::{middleware::Logger, web, App, HttpServer};
-use std::sync::{Arc, OnceLock};
+use std::sync::{OnceLock};
 use crate::server::controller::bill::{delete_bill_items, get_bill, post_bill_items};
 use crate::server::controller::table::{get_tables, patch_table};
 

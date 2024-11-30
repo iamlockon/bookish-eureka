@@ -1,12 +1,14 @@
+use crate::server::database::pool::GenericRow;
+use crate::server::database::pool::GenericTransaction;
 use std::time::Duration;
 use actix_web::{get, patch, web, Responder};
 use actix_web::rt::time;
-use anyhow::Context;
 use log::{error, info, warn};
 use tokio_postgres::types::{ToSql};
 use crate::server::controller::error::CustomError;
 use crate::server::controller::error::CustomError::{BadRequest, DbError, Timeout};
 use crate::server::controller::DB_TIMEOUT_SECONDS;
+use crate::server::database::pool::DbClient;
 use crate::server::model::table::{GetTablesResponse, PatchTablesResponse, Table};
 use crate::server::state::AppState;
 
@@ -18,7 +20,7 @@ async fn patch_table(
 ) -> Result<impl Responder, CustomError> {
     if let Some(mut conn) = data.get_db_write_pool().acquire().await {
         let client = conn.client.as_mut().unwrap();
-        match client.transaction().await.context("failed to start transaction") {
+        match client.transaction().await {
             Ok(txn) => {
                 let id = id.into_inner();
                 let params: &[&(dyn ToSql + Sync)] = &[&id];
@@ -39,13 +41,13 @@ async fn patch_table(
                                     },
                                     Err(e) => {
                                         warn!("query error, {}", e);
-                                        return Err(DbError);
+                                        return Err(e);
                                     }
                                 }
                             },
                             Err(e) => {
                                 error!("failed to query, {}", e);
-                                return Err(DbError);
+                                return Err(DbError(e));
                             }
                         }
                     },
@@ -56,41 +58,46 @@ async fn patch_table(
                 }
 
                 // insert bill
-                match txn.query_one(r#"
+                let result: Result<i64, CustomError> = match txn.query_one(r#"
                     INSERT INTO bill(table_id, created_at)
                     VALUES ($1, $2)
                     RETURNING id, table_id
-                "#, &[&id, &crate::server::util::time::helper::get_utc_now()]).await {
+                "#, &[&id as &(dyn ToSql + Sync), &crate::server::util::time::helper::get_utc_now() as &(dyn ToSql + Sync)]).await {
                     Ok(row) => {
                         // bind bill to table
-                        let bill_id = row.get("id");
+                        let bill_id: i64 = row.get("id");
                         match txn.execute(r#"
                             UPDATE "table" ta
                             SET bill_id = $2
                             WHERE ta.id = $1
-                        "#, &[&id, &bill_id]).await {
+                        "#, &[&id as &(dyn ToSql + Sync), &bill_id]).await {
                             Ok(_) => {
-                                // save the work
-                                txn.commit().await.map_err(|_| DbError)?;
-                                Ok(web::Json(PatchTablesResponse {
-                                    bill_id,
-                                }))
+                                Ok(bill_id)
                             },
                             Err(e) => {
                                 error!("failed to bind bill to table, {}", e);
-                                Err(DbError)
+                                Err(DbError(e))
                             }
                         }
                     },
                     Err(e) => {
                         error!("failed to insert bill, {}", e);
-                        Err(DbError)
+                        Err(DbError(e))
                     }
+                };
+                match result {
+                    Ok(bill_id) => {
+                        txn.0.commit().await.map_err(|e| DbError(e))?;
+                        Ok(web::Json(PatchTablesResponse {
+                            bill_id,
+                        }))
+                    },
+                    Err(e) => Err(e)
                 }
             },
             Err(e) => {
                 error!("db error, {}", e);
-                Err(DbError)
+                Err(DbError(e))
             }
         }
     } else {
@@ -126,7 +133,7 @@ async fn get_tables(data: web::Data<&AppState>) -> Result<impl Responder, Custom
             }
             Err(e) => {
                 error!("get_tables failed, {}", e);
-                Err(DbError)
+                Err(DbError(e))
             }
         };
     }

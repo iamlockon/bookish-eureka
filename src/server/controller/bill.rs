@@ -1,4 +1,5 @@
-use std::ops::{Deref, RangeInclusive};
+use crate::server::database::pool::GenericRow;
+use std::ops::{RangeInclusive};
 use std::time::Duration;
 use crate::server::model::bill::{Bill, GetBillResponse, PostBillItemsRequest};
 use crate::server::state::AppState;
@@ -11,6 +12,7 @@ use tokio_postgres::error::SqlState;
 use tokio_postgres::types::ToSql;
 use crate::server::controller::error::CustomError;
 use crate::server::controller::DB_TIMEOUT_SECONDS;
+use crate::server::database::pool::DbClient;
 use crate::server::model::CommonRequestParams;
 use crate::server::model::item::Item;
 
@@ -28,11 +30,10 @@ async fn post_bill_items(id: web::Path<i64>, body: web::Json<PostBillItemsReques
             acc.push(rand::thread_rng().gen_range(TIME_TO_DELIVER_RANGE));
             acc
         }).into_iter().collect::<Vec<_>>();
-        let created_at = crate::server::util::time::get_utc_now();
+        let created_at = crate::server::util::time::helper::get_utc_now();
         for (i, menu_item_id) in body.items.iter().enumerate() {
             let maybe_comma = if i != body.items.len() - 1 { "," } else { "" };
             stmt.extend(format!(" (${}, ${}, ${}, ${}, ${}){}", idx, idx+1, idx+2, idx+3, idx+4, maybe_comma).chars());
-            let rand = rand::thread_rng().gen_range(TIME_TO_DELIVER_RANGE);
             let cur_params = [&id as &(dyn ToSql + Sync), menu_item_id as &(dyn ToSql + Sync), &"created", &rand_v[i], &created_at];
             params.extend(cur_params.into_iter());
             idx += COLUMN_LEN;
@@ -54,7 +55,7 @@ async fn post_bill_items(id: web::Path<i64>, body: web::Json<PostBillItemsReques
                         error!("unhandled db error, code={:?}", code);
                     },
                 }
-                Err(CustomError::DbError)
+                Err(CustomError::DbError(e))
             }
         };
     }
@@ -88,7 +89,7 @@ async fn delete_bill_items(path: web::Path<(i64, i32)>, data: web::Data<&AppStat
                     Ok(_) => Ok(HttpResponse::Ok()),
                     Err(e) => {
                         warn!("delete_bill_items failed, {}", e);
-                        Err(CustomError::DbError)
+                        Err(CustomError::DbError(e))
                     }
                 }
             },
@@ -152,7 +153,7 @@ async fn get_bill(id: web::Path<i64>, req: HttpRequest, data: web::Data<&AppStat
             }
             Err(e) => {
                 error!("get_bills failed, {}", e);
-                Err(CustomError::DbError)
+                Err(CustomError::DbError(e))
             }
         };
     }
