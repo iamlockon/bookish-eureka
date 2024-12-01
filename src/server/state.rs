@@ -30,7 +30,7 @@ impl AppState {
     pub fn get_db_read_pool(&self) -> Pool<Client> {
         self.db_read_pool.clone()
     }
-    
+
     #[cfg(not(test))]
     pub fn get_db_write_pool(&self) -> Pool<Client> {
         self.db_write_pool.clone()

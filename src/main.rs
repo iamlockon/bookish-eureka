@@ -1,7 +1,4 @@
-#![feature(duration_constructors)]
 //! application entry point
-
-extern crate core;
 
 use crate::server::model::config::ServerConfig;
 use log::info;
@@ -30,7 +27,7 @@ async fn main() -> std::io::Result<()> {
 
     match env {
         Env::Prod | Env::Stg => {} // load in CI
-        Env::Dev => dotenvy::from_path(Path::new("src/server/env/.env.dev"))
+        Env::Dev => dotenvy::from_path(Path::new(".env.dev"))
             .expect(DOTENV_LOADING_FAILED_MSG),
     };
 

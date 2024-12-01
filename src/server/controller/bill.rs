@@ -77,7 +77,7 @@ async fn delete_bill_items(path: web::Path<(i64, i32)>, data: web::Data<&AppStat
     let (id, item_id) = path.into_inner();
     let params: &[&(dyn ToSql + Sync)] = &[&id, &item_id];
     if let Some(conn) = data.get_db_write_pool().acquire().await {
-        let sleep = time::sleep(Duration::from_secs(DB_TIMEOUT_SECONDS));
+        let sleep = time::sleep(Duration::new(DB_TIMEOUT_SECONDS, 0));
         tokio::pin!(sleep);
         let client = conn.client.as_ref().unwrap();
         return tokio::select! {

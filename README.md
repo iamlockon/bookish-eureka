@@ -19,46 +19,21 @@ This is an attempt to create a production-ready application.
 - [ ] The application MUST accept at least 10 simultaneous incoming add/remove/query requests.
 - [x] The server API MUST fully follow REST API principles and present a set of HTTP endpoints to connect to.
 
-## Usage
+## APIs
 
-### Server
-```bash
-$ [APP_ENV=<stg|prod>] ./server
-```
-### Client
+### Table
+- PATCH /v1/table/{id} : For claiming a table, this creates a new associated bill for tracking bill items.
+- GET /v1/tables : For listing up all tables, and their associated bills.
+### Bill
+- POST /v1/bill/{id}/items : Add bill associated items to a bill
+- DELETE /v1/bill/{id}/item/{item_id} : Remove one specific bill item from a bill
+- GET /v1/bill/{id} : Get bill items for a bill
 
-#### Create order
-```bash
-$ ./client create [<order name> <item>.. ]
-```
-#### Delete order
-```bash
-$ ./client create
-```
+## Integration Test
 
-## Testing
-
-### Integration Test
-
-### Unit Test
-
-### Local test
-Some handy curl cmds.
-```curl
-Create Bill
-
-curl --header "Content-Type: application/json" \
-  --request POST \
-  --data '{"table_id": 1, "customer_count": 4}' \
-  http://localhost:8080/v1/bills
-  
-  
-Get a Bill
-curl localhost:8080/v1/bill/{id}
-
-Get Bills
-curl localhost:8080/v1/bills
-```
+### Prerequisites
+- Latest Podman (or Colima, Docker, etc. I use Podman for Desktop on Windows)
+- 
 
 ## Limitations
 - Currently, server address only supports IPv4.

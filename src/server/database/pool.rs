@@ -341,7 +341,7 @@ where M : DbClient<Client = M>
     /// acquire a connection with specified timeout, bail out if timeout exceeds.
     #[allow(unused)]
     async fn acquire_with_timeout(&self, timeout: u64) -> Option<Connection<M>> {
-        let sleep = time::sleep(Duration::from_millis(timeout));
+        let sleep = time::sleep(Duration::new(timeout, 0));
         tokio::pin!(sleep);
         tokio::select! {
             mut connections = self.0.connections.lock() => {

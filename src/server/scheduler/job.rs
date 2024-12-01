@@ -1,6 +1,5 @@
 use crate::server::database::pool::GenericRow;
 use crate::server::database::pool::DbClient;
-use std::time::Duration;
 use log::{error, info};
 use tokio::{pin, select, time};
 use tokio_util::sync::CancellationToken;
@@ -12,7 +11,7 @@ const DEFAULT_DB_WRITE_POOL_CONN_STR: &str = "postgresql://postgres:pass@localho
 async fn worker(cancel_token: CancellationToken) {
     let mut write_pool = Pool::new().await.unwrap();
     write_pool.init(DEFAULT_DB_WRITE_POOL_CONN_STR.to_string()).await.ok();
-    let interval = time::interval(Duration::from_mins(1_u64)); // run once every minute
+    let interval = time::interval(time::Duration::new(60, 0)); // run once every minute
     pin!(interval);
     loop {
         select! {
@@ -22,7 +21,7 @@ async fn worker(cancel_token: CancellationToken) {
                 return;
             }
         }
-        
+
         let local_conn = write_pool.acquire().await.unwrap();
         let client = local_conn.client.as_ref().unwrap();
         let ids = match client.query(r#"
@@ -40,6 +39,7 @@ async fn worker(cancel_token: CancellationToken) {
         };
         
         if ids.is_empty() {
+            info!("nothing to update, continue to sleep");
             continue;
         }
         
@@ -62,9 +62,14 @@ async fn worker(cancel_token: CancellationToken) {
 }
 
 pub async fn bill_item_sweeper(cancel_token: CancellationToken) {
-    let tracker = task_tracker::TaskTracker::new();
-    tracker.spawn(worker(cancel_token));
-    if tracker.close() {
-        tracker.wait().await;
+    loop {
+        let tracker = task_tracker::TaskTracker::new();
+        tracker.spawn(worker(cancel_token.clone()));
+        if tracker.close() {
+            tracker.wait().await;
+            if cancel_token.is_cancelled() { // stop sweeper only when app is being shutting down 
+                break;   
+            }
+        }
     }
 }

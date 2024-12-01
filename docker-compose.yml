@@ -1,4 +1,14 @@
 services:
+  server:
+    build:
+      context: .
+      target: runtime
+    platform: 'linux/amd64'
+    ports:
+      - '8080:8080'
+    depends_on:
+      pgsql:
+        condition: service_healthy
   pgsql:
     image: docker.io/bitnami/postgresql:17
     ports:
@@ -7,6 +17,11 @@ services:
       - 'postgresql_data:/bitnami/postgresql'
     environment:
       - 'POSTGRESQL_PASSWORD=pass' # can connect with postgres:pass
+    healthcheck:
+      test: ["CMD", "pg_isready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgresql_data:

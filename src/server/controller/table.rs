@@ -25,7 +25,7 @@ async fn patch_table(
                 let id = id.into_inner();
                 let params: &[&(dyn ToSql + Sync)] = &[&id];
                 // check table availability
-                let sleep = time::sleep(Duration::from_secs(DB_TIMEOUT_SECONDS));
+                let sleep = time::sleep(Duration::new(DB_TIMEOUT_SECONDS, 0));
                 tokio::pin!(sleep);
                 tokio::select! {
                     result = txn.query_one(r#"SELECT bill_id FROM "table" WHERE id = $1 FOR UPDATE"#, params) => {

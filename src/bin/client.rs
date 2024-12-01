@@ -1,8 +1,8 @@
 use std::fmt::Formatter;
 use clap::{Args, Parser, Subcommand};
 use derive_more::Display;
-use reqwest::{Client, StatusCode};
-use serde::{Deserialize, Serialize};
+use reqwest::{Client, Method, StatusCode};
+use serde::{Deserialize};
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -19,6 +19,14 @@ enum Commands {
     /// table related ops
     #[command(arg_required_else_help = true)]
     Table(TableArgs),
+    /// integration test
+    #[command(arg_required_else_help = true)]
+    Test(TestArgs)
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct TestArgs {
+    concurrency: u32,
 }
 
 #[derive(Debug, Args)]
@@ -256,7 +264,15 @@ async fn main() -> Result<(), anyhow::Error> {
                     }
                 }
             }
+        },
+        Commands::Test(TestArgs{ concurrency}) => {
+            let simulation = 
         }
     };
     Ok(())
+}
+
+struct Simulation {
+    pub uri: String,
+    pub method: Method,
 }
