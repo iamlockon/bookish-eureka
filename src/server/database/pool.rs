@@ -1,7 +1,7 @@
 use crate::server::database::connection::{Connection};
 #[cfg(test)]
 use crate::server::database::connection::MockClient;
-use anyhow::Error;
+use anyhow::{anyhow, Error};
 use log::{error, info};
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -12,7 +12,7 @@ use std::ops::{Deref, DerefMut};
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tokio::time;
-use tokio_postgres::{Client, Row, ToStatement};
+use tokio_postgres::{Client, Row, ToStatement, Transaction};
 use tokio_postgres::row::RowIndex;
 use tokio_postgres::types::{FromSql, ToSql, Type};
 use crate::server::controller::error::CustomError;
@@ -54,13 +54,15 @@ pub(crate) trait DbClient: Send + Sync + 'static {
     ) -> Result<u64, tokio_postgres::Error>
     where
         T: ?Sized + ToStatement;
-    async fn transaction(&mut self) -> Result<WrappedTransaction<impl GenericTransaction>, tokio_postgres::Error>;
+    #[cfg(not(test))]
+    async fn transaction(&mut self) -> Result<WrappedTransaction<Transaction<'_>>, tokio_postgres::Error>;
+    #[cfg(test)]
+    async fn transaction(&mut self) -> Result<MockTransaction, tokio_postgres::Error>;
 }
 
 pub(crate) struct CommonPool<M>
 where M : DbClient<Client = M>
 {
-    pub name: String,
     pub connections: Mutex<VecDeque<Connection<M>>>,
 }
 
@@ -74,30 +76,17 @@ where M : DbClient<Client = M> + Send
     }
 }
 
-pub(crate) struct WrappedTransaction<T: GenericTransaction>(pub T);
+#[cfg(not(test))]
+pub(crate) struct WrappedTransaction<T: GenericTransaction<Row>>(pub T);
+#[cfg(test)]
+pub(crate) struct WrappedTransaction<T: GenericTransaction<MockRow>>(pub T);
 
-impl<T: GenericTransaction> Deref for WrappedTransaction<T>
-{
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T: GenericTransaction> DerefMut for WrappedTransaction<T>
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-pub(crate) trait GenericTransaction {
+pub(crate) trait GenericTransaction<R: GenericRow> {
     async fn query_one<T>(
         &self,
         statement: &T,
         params: &[&(dyn ToSql + Sync)],
-    ) -> Result<WrappedRow<impl GenericRow>, tokio_postgres::Error>
+    ) -> Result<WrappedRow<R>, tokio_postgres::Error>
     where
         T: ?Sized + ToStatement;
 
@@ -120,7 +109,7 @@ pub(crate) trait GenericRow {
         I: RowIndex + Display,
         T: FromSql<'a>;
     
-    fn try_get<'a, I, T>(&'a self, idx: I) -> Result<T, CustomError>
+    fn try_get<'a, I, T>(&'a self, idx: I) -> Result<T, Error>
     where
         I: RowIndex + Display,
         T: FromSql<'a>;
@@ -133,15 +122,15 @@ impl GenericRow for WrappedRow<Row> {
         I: RowIndex + Display,
         T: FromSql<'a>
     {
-        self.get(idx)
+        self.0.get(idx)
     }
 
-    fn try_get<'a, I, T>(&'a self, idx: I) -> Result<T, CustomError>
+    fn try_get<'a, I, T>(&'a self, idx: I) -> Result<T, Error>
     where
         I: RowIndex + Display,
         T: FromSql<'a>
     {
-        self.try_get(idx)
+        self.0.try_get(idx).map_err(|e| anyhow!(e))
     }
 }
 
@@ -155,12 +144,12 @@ impl GenericRow for Row {
         self.get(idx)
     }
 
-    fn try_get<'a, I, T>(&'a self, idx: I) -> Result<T, CustomError>
+    fn try_get<'a, I, T>(&'a self, idx: I) -> Result<T, Error>
     where
         I: RowIndex + Display,
         T: FromSql<'a>
     {
-        self.try_get(idx).map_err(|e| CustomError::DbError(e))
+        self.try_get(idx).map_err(|e| anyhow!(e))
     }
 }
 
@@ -188,7 +177,7 @@ impl GenericRow for WrappedRow<MockRow> {
     }
 
     #[allow(unused_variables)]
-    fn try_get<'a, I, T>(&'a self, idx: I) -> Result<T, CustomError>
+    fn try_get<'a, I, T>(&'a self, idx: I) -> Result<T, Error>
     where
         I: RowIndex + Display,
         T: FromSql<'a>
@@ -196,7 +185,7 @@ impl GenericRow for WrappedRow<MockRow> {
         println!("try_get for mock row");
         match T::from_sql(&Type::ANY, &[0]) {
             Ok(t) => Ok(t),
-            Err(_) => Err(CustomError::Unknown), // random impl
+            Err(e) => Err(anyhow!(e)), // random impl
         }
     }
 }
@@ -214,7 +203,7 @@ impl GenericRow for MockRow {
     }
 
     #[allow(unused_variables)]
-    fn try_get<'a, I, T>(&'a self, idx: I) -> Result<T, CustomError>
+    fn try_get<'a, I, T>(&'a self, idx: I) -> Result<T, Error>
     where
         I: RowIndex + Display,
         T: FromSql<'a>
@@ -222,7 +211,7 @@ impl GenericRow for MockRow {
         println!("try_get for mock row");
         match T::from_sql(&Type::ANY, &[0]) {
             Ok(t) => Ok(t),
-            Err(_) => Err(CustomError::Unknown), // random impl
+            Err(e) => Err(anyhow!(e)), // random impl
         }
     }
 }
@@ -238,9 +227,9 @@ impl MockTransaction {
 }
 
 #[cfg(test)]
-impl GenericTransaction for MockTransaction {
+impl GenericTransaction<MockRow> for MockTransaction {
     #[allow(unused_variables)]
-    async fn query_one<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<WrappedRow<impl GenericRow>, tokio_postgres::Error>
+    async fn query_one<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<WrappedRow<MockRow>, tokio_postgres::Error>
     where
         T: ?Sized + ToStatement
     {
@@ -334,7 +323,6 @@ where M : DbClient<Client = M>
     /// create a connection pool with default configuration
     pub async fn new() -> Result<Self, Error> {
         let shared = Arc::new(CommonPool{
-            name: "name".to_string(),
             connections: Mutex::new(VecDeque::with_capacity(Self::DEFAULT_SIZE))
         });
         let pool = Self(shared);

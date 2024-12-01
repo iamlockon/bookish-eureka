@@ -14,7 +14,6 @@ use actix_web::{middleware::Logger, web, App, HttpServer};
 use std::sync::{OnceLock};
 use log::error;
 use tokio::signal;
-use tokio_postgres::Client;
 use tokio_util::sync::CancellationToken;
 use crate::server::controller::bill::{delete_bill_items, get_bill, post_bill_items};
 use crate::server::controller::table::{get_tables, patch_table};

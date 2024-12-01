@@ -31,7 +31,7 @@ async fn patch_table(
                     result = txn.query_one(r#"SELECT bill_id FROM "table" WHERE id = $1 FOR UPDATE"#, params) => {
                         match result {
                             Ok(row) => {
-                                match row.0.try_get::<&str, Option<i64>>("bill_id") {
+                                match row.try_get::<&str, Option<i64>>("bill_id") {
                                     Ok(Some(bill_id)) => {
                                         warn!("the table is already taken, bill_id={}", bill_id);
                                         return Err(BadRequest);
@@ -41,13 +41,13 @@ async fn patch_table(
                                     },
                                     Err(e) => {
                                         warn!("query error, {}", e);
-                                        return Err(DbError(e));
+                                        return Err(DbError(e.into()));
                                     }
                                 }
                             },
                             Err(e) => {
                                 error!("failed to query, {}", e);
-                                return Err(DbError(e));
+                                return Err(DbError(e.into()));
                             }
                         }
                     },
@@ -65,7 +65,7 @@ async fn patch_table(
                 "#, &[&id as &(dyn ToSql + Sync), &crate::server::util::time::helper::get_utc_now() as &(dyn ToSql + Sync)]).await {
                     Ok(row) => {
                         // bind bill to table
-                        let bill_id: i64 = row.0.get("id");
+                        let bill_id: i64 = row.get("id");
                         match txn.execute(r#"
                             UPDATE "table" ta
                             SET bill_id = $2
@@ -76,18 +76,18 @@ async fn patch_table(
                             },
                             Err(e) => {
                                 error!("failed to bind bill to table, {}", e);
-                                Err(DbError(e))
+                                Err(DbError(e.into()))
                             }
                         }
                     },
                     Err(e) => {
                         error!("failed to insert bill, {}", e);
-                        Err(DbError(e))
+                        Err(DbError(e.into()))
                     }
                 };
                 match result {
                     Ok(bill_id) => {
-                        txn.commit().await.map_err(|e| DbError(e))?;
+                        txn.commit().await.map_err(|e| DbError(e.into()))?;
                         Ok(web::Json(PatchTablesResponse {
                             bill_id,
                         }))
@@ -97,7 +97,7 @@ async fn patch_table(
             },
             Err(e) => {
                 error!("db error, {}", e);
-                Err(DbError(e))
+                Err(DbError(e.into()))
             }
         }
     } else {
@@ -133,7 +133,7 @@ async fn get_tables(data: web::Data<&AppState>) -> Result<impl Responder, Custom
             }
             Err(e) => {
                 error!("get_tables failed, {}", e);
-                Err(DbError(e))
+                Err(DbError(e.into()))
             }
         };
     }

@@ -12,7 +12,7 @@ pub(crate) enum CustomError {
     #[display("resource not found")]
     ResourceNotFound,
     #[display("database error")]
-    DbError(tokio_postgres::Error),
+    DbError(anyhow::Error),
     #[display("timeout occurred")]
     Timeout,
     #[display("unknown")]

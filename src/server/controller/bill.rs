@@ -1,5 +1,4 @@
 use crate::server::database::pool::GenericRow;
-use crate::server::database::pool::GenericTransaction;
 use std::ops::{RangeInclusive};
 use std::time::Duration;
 use crate::server::model::bill::{Bill, GetBillResponse, PostBillItemsRequest};
@@ -43,14 +42,14 @@ async fn post_bill_items(id: web::Path<i64>, body: web::Json<PostBillItemsReques
 
         stmt.extend(" RETURNING id".chars());
 
-        let mut client = match &mut conn.client {
+        let client = match &mut conn.client {
             Some(client) => client,
             None => {
                 error!("client is None");
                 return Err(CustomError::Unknown);
             },
         };
-        let rows = match client.query(&stmt, &params.as_slice()).await {
+        match client.query(&stmt, &params.as_slice()).await {
             Ok(rows) => rows,
             Err(e) => {
                 match e.code().unwrap() {
@@ -62,7 +61,7 @@ async fn post_bill_items(id: web::Path<i64>, body: web::Json<PostBillItemsReques
                         error!("unhandled db error, code={:?}", code);
                     },
                 };
-                return Err(CustomError::DbError(e));
+                return Err(CustomError::DbError(e.into()));
             },
         };
 
@@ -99,7 +98,7 @@ async fn delete_bill_items(path: web::Path<(i64, i32)>, data: web::Data<&AppStat
                     Ok(_) => Ok(HttpResponse::Ok()),
                     Err(e) => {
                         warn!("delete_bill_items failed, {}", e);
-                        Err(CustomError::DbError(e))
+                        Err(CustomError::DbError(e.into()))
                     }
                 }
             },
@@ -163,7 +162,7 @@ async fn get_bill(id: web::Path<i64>, req: HttpRequest, data: web::Data<&AppStat
             }
             Err(e) => {
                 error!("get_bills failed, {}", e);
-                Err(CustomError::DbError(e))
+                Err(CustomError::DbError(e.into()))
             }
         };
     }

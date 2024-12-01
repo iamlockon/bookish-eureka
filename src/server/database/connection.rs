@@ -30,7 +30,7 @@ impl DbClient for Client {
         self.execute(statement, params).await
     }
 
-    async fn transaction(&mut self) -> Result<WrappedTransaction<impl GenericTransaction>, Error>
+    async fn transaction(&mut self) -> Result<WrappedTransaction<Transaction>, Error>
     {
         let txn = self.transaction().await;
         match txn {
@@ -49,7 +49,7 @@ impl DbClient for MockClient {
     type Client = MockClient;
 
     #[allow(unused_variables)]
-    async fn query<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<impl GenericRow>, tokio_postgres::Error>
+    async fn query<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<impl GenericRow>, Error>
     where
         T: ?Sized + ToStatement
     {
@@ -58,7 +58,7 @@ impl DbClient for MockClient {
     }
 
     #[allow(unused_variables)]
-    async fn execute<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<u64, tokio_postgres::Error>
+    async fn execute<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<u64, Error>
     where
         T: ?Sized + ToStatement
     {
@@ -66,18 +66,18 @@ impl DbClient for MockClient {
         Ok(u64::MIN)
     }
 
-    async fn transaction(&mut self) -> Result<WrappedTransaction<impl GenericTransaction>, tokio_postgres::Error> {
-        Ok(WrappedTransaction(MockTransaction::new()))
+    async fn transaction(&mut self) -> Result<MockTransaction, Error> {
+        Ok(MockTransaction::new())
     }
 }
 
 #[cfg(not(test))]
-impl GenericTransaction for Transaction<'_> {
-    async fn query_one<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<WrappedRow<impl GenericRow>, Error>
+impl GenericTransaction<Row> for Transaction<'_> {
+    async fn query_one<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<WrappedRow<Row>, Error>
     where
         T: ?Sized + ToStatement
     {
-        self.query_one(statement, params).await.map(|r| WrappedRow(r))
+        self.query_one(statement, params).await.map(|row| WrappedRow(row))
     }
 
     async fn execute<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<u64, Error>

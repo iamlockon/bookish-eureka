@@ -17,7 +17,6 @@ pub(crate) struct AppState {
     db_write_pool: Pool<MockClient>,
 }
 
-
 impl AppState {
     #[cfg(not(test))]
     pub fn new(db_read_pool: Pool<Client>, db_write_pool: Pool<Client>) -> Self {
@@ -26,6 +25,7 @@ impl AppState {
             db_write_pool,
         }
     }
+
     #[cfg(not(test))]
     pub fn get_db_read_pool(&self) -> Pool<Client> {
         self.db_read_pool.clone()
@@ -43,6 +43,7 @@ impl AppState {
             db_write_pool,
         }
     }
+
     #[cfg(test)]
     pub fn get_db_read_pool(&self) -> Pool<MockClient> {
         self.db_read_pool.clone()

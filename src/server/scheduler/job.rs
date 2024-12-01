@@ -1,4 +1,5 @@
-use crate::server::database::pool::{DbClient, GenericRow};
+use crate::server::database::pool::GenericRow;
+use crate::server::database::pool::DbClient;
 use std::time::Duration;
 use log::{error, info};
 use tokio::{pin, select, time};
