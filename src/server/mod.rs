@@ -5,14 +5,20 @@ mod database;
 pub mod model;
 mod state;
 pub(crate) mod util;
+mod scheduler;
 
-use crate::server::database::pool::{Pool};
+use crate::server::database::pool::{DbClient, Init, Pool};
 use crate::server::model::config::ServerConfig;
 use crate::server::state::AppState;
 use actix_web::{middleware::Logger, web, App, HttpServer};
 use std::sync::{OnceLock};
+use log::error;
+use tokio::signal;
+use tokio_postgres::Client;
+use tokio_util::sync::CancellationToken;
 use crate::server::controller::bill::{delete_bill_items, get_bill, post_bill_items};
 use crate::server::controller::table::{get_tables, patch_table};
+use crate::server::scheduler::job::bill_item_sweeper;
 
 static APP_STATE: OnceLock<AppState> = OnceLock::new();
 
@@ -24,11 +30,17 @@ pub async fn run(
         db_write_pool_conn_str,
     }: ServerConfig,
 ) -> std::io::Result<()> {
-    // init app state, only one thread
-    let mut read_pool = Pool::new().await.unwrap();
-    read_pool.init(db_read_pool_conn_str).await.ok();
-    let mut write_pool = Pool::new().await.unwrap();
-    write_pool.init(db_write_pool_conn_str).await.ok();
+    let read_pool= {
+        let mut pool = Pool::new().await.unwrap();
+        pool.init(db_read_pool_conn_str).await.ok();
+        pool
+    };
+    let write_pool= {
+        let mut pool = Pool::new().await.unwrap();
+        pool.init(db_write_pool_conn_str).await.ok();
+        pool
+    };
+    
     APP_STATE
         .set(AppState::new(
             read_pool,
@@ -36,6 +48,8 @@ pub async fn run(
         ))
         .ok();
 
+    let db_jobs_handle=  tokio::spawn(db_jobs());
+    
     let app_state = web::Data::new(APP_STATE.get().expect("failed to get app state"));
     // init http server
     HttpServer::new(move || {
@@ -50,5 +64,22 @@ pub async fn run(
     })
     .bind(addr)?
     .run()
-    .await
+    .await?;
+
+    db_jobs_handle.await?
+}
+
+async fn db_jobs() -> std::io::Result<()> {
+    let cancel_token = CancellationToken::new();
+    let bill_item_sweeper_handle = tokio::spawn(bill_item_sweeper(cancel_token.clone()));
+    match signal::ctrl_c().await {
+        Ok(()) => {
+            cancel_token.cancel();
+            bill_item_sweeper_handle.await.expect("failed to gracefully shutdown bill item sweeper");
+        },
+        Err(err) => {
+            error!("failed to await termination signal, {}", err);
+        },
+    }
+    Ok(())
 }

@@ -1,45 +1,21 @@
-use tokio_postgres::{Client, Error, ToStatement, Transaction};
+use tokio_postgres::{Client, Error, Row, ToStatement, Transaction};
 use tokio_postgres::types::ToSql;
-use crate::server::database::pool::{Pool, DbClient, GenericTransaction, WrappedTransaction, GenericRow};
+use crate::server::database::pool::{Pool, DbClient, GenericTransaction, WrappedTransaction, GenericRow, WrappedRow};
+
+#[cfg(test)]
+use crate::server::database::pool::{MockRow, MockTransaction};
 
 pub(crate) struct Connection<M>
-where M: DbClient + Send + 'static,
+where M: DbClient<Client = M>
 {
-    pub(crate) client: Option<WrappedClient<M>>,
+    pub(crate) client: Option<M::Client>,
     pub(crate) pool: Pool<M>,
 }
 
-pub(crate) struct WrappedClient<C>(pub C)
-where C: DbClient;
-
-// impl<C: ClientImpl> WrappedClient<C> {
-//     pub fn
-// }
-
-impl<C> DbClient for WrappedClient<C>
-where C: DbClient + Send
-{
-    async fn query<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<impl GenericRow>, Error>
-    where
-        T: ?Sized + ToStatement
-    {
-        self.0.query(statement, params).await
-    }
-
-    async fn execute<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<u64, Error>
-    where
-        T: ?Sized + ToStatement
-    {
-        self.0.execute(statement, params).await
-    }
-
-    async fn transaction(&mut self) -> Result<WrappedTransaction<impl GenericTransaction>, Error>
-    {
-        self.0.transaction().await
-    }
-}
-
+#[cfg(not(test))]
 impl DbClient for Client {
+    type Client = Client;
+
     async fn query<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<impl GenericRow>, Error>
     where
         T: ?Sized + ToStatement
@@ -64,12 +40,44 @@ impl DbClient for Client {
     }
 }
 
-impl GenericTransaction for Transaction<'_> {
-    async fn query_one<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<impl GenericRow, Error>
+
+/// for test
+#[cfg(test)]
+pub(crate) struct MockClient;
+#[cfg(test)]
+impl DbClient for MockClient {
+    type Client = MockClient;
+
+    #[allow(unused_variables)]
+    async fn query<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<impl GenericRow>, tokio_postgres::Error>
     where
         T: ?Sized + ToStatement
     {
-        self.query_one(statement, params).await
+        println!("query mock client");
+        Ok(Vec::<MockRow>::new())
+    }
+
+    #[allow(unused_variables)]
+    async fn execute<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<u64, tokio_postgres::Error>
+    where
+        T: ?Sized + ToStatement
+    {
+        println!("execute mock client");
+        Ok(u64::MIN)
+    }
+
+    async fn transaction(&mut self) -> Result<WrappedTransaction<impl GenericTransaction>, tokio_postgres::Error> {
+        Ok(WrappedTransaction(MockTransaction::new()))
+    }
+}
+
+#[cfg(not(test))]
+impl GenericTransaction for Transaction<'_> {
+    async fn query_one<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<WrappedRow<impl GenericRow>, Error>
+    where
+        T: ?Sized + ToStatement
+    {
+        self.query_one(statement, params).await.map(|r| WrappedRow(r))
     }
 
     async fn execute<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<u64, Error>
@@ -85,15 +93,15 @@ impl GenericTransaction for Transaction<'_> {
 }
 
 impl<M> Connection<M>
-where M : DbClient + Send
+where M : DbClient<Client = M>
 {
-    pub fn new(client: WrappedClient<M>, pool: Pool<M>) -> Self {
+    pub fn new(client: M::Client, pool: Pool<M>) -> Self {
         Self { client: Some(client), pool }
     }
 }
 
 impl<M> Drop for Connection<M>
-where M: DbClient + Send + 'static
+where M: DbClient<Client = M>
 {
     fn drop(&mut self) {
         self.pool.release(self.client.take().unwrap());

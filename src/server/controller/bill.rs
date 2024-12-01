@@ -1,4 +1,5 @@
 use crate::server::database::pool::GenericRow;
+use crate::server::database::pool::GenericTransaction;
 use std::ops::{RangeInclusive};
 use std::time::Duration;
 use crate::server::model::bill::{Bill, GetBillResponse, PostBillItemsRequest};
@@ -6,22 +7,23 @@ use crate::server::state::AppState;
 use actix_web::{delete, get, post, web, HttpRequest, HttpResponse, Responder};
 use actix_web::rt::time;
 use anyhow::Context;
-use log::{error, warn};
+use log::{error, info, warn};
 use rand::Rng;
+use tokio_postgres::{Client, Row};
 use tokio_postgres::error::SqlState;
 use tokio_postgres::types::ToSql;
 use crate::server::controller::error::CustomError;
 use crate::server::controller::DB_TIMEOUT_SECONDS;
-use crate::server::database::pool::DbClient;
 use crate::server::model::CommonRequestParams;
 use crate::server::model::item::Item;
+use crate::server::database::pool::DbClient;
 
 #[post("/v1/bill/{id}/items")]
 /// Add bill associated items
 async fn post_bill_items(id: web::Path<i64>, body: web::Json<PostBillItemsRequest>, data: web::Data<&AppState>) -> Result<impl Responder, CustomError> {
     const COLUMN_LEN: usize = 5;
     const TIME_TO_DELIVER_RANGE: RangeInclusive<i32> = 5..=15;
-    if let Some(conn) = data.get_db_write_pool().acquire().await {
+    if let Some(mut conn) = data.get_db_write_pool().acquire().await {
         let mut stmt = "INSERT INTO bill_item(bill_id, menu_item_id, state, time_to_deliver, created_at) VALUES".to_string();
         let mut idx = 1;
         let mut params: Vec<&(dyn ToSql + Sync)> = Vec::with_capacity(body.items.len() * COLUMN_LEN);
@@ -39,12 +41,17 @@ async fn post_bill_items(id: web::Path<i64>, body: web::Json<PostBillItemsReques
             idx += COLUMN_LEN;
         }
 
-        let client = conn.client.as_ref().unwrap();
-        return match client
-            .execute(&stmt, &params.as_slice())
-            .await
-        {
-            Ok(_) => Ok(HttpResponse::Ok()),
+        stmt.extend(" RETURNING id".chars());
+
+        let mut client = match &mut conn.client {
+            Some(client) => client,
+            None => {
+                error!("client is None");
+                return Err(CustomError::Unknown);
+            },
+        };
+        let rows = match client.query(&stmt, &params.as_slice()).await {
+            Ok(rows) => rows,
             Err(e) => {
                 match e.code().unwrap() {
                     &SqlState::FOREIGN_KEY_VIOLATION => {
@@ -54,10 +61,13 @@ async fn post_bill_items(id: web::Path<i64>, body: web::Json<PostBillItemsReques
                     code => {
                         error!("unhandled db error, code={:?}", code);
                     },
-                }
-                Err(CustomError::DbError(e))
-            }
+                };
+                return Err(CustomError::DbError(e));
+            },
         };
+
+        return Ok(HttpResponse::Ok());
+
     }
     Err(CustomError::ServerIsBusy)
 }
@@ -118,7 +128,7 @@ async fn get_bill(id: web::Path<i64>, req: HttpRequest, data: web::Data<&AppStat
         let id = id.into_inner();
         let client = conn.client.as_ref().unwrap();
         return match client.query(r##"
-            SELECT b.id, mi.name, b.time_to_deliver
+            SELECT b.id, mi.name, b.time_to_deliver, b.state
             FROM bill_item b
             JOIN menu_item mi
             ON b.menu_item_id = mi.id
@@ -129,10 +139,10 @@ async fn get_bill(id: web::Path<i64>, req: HttpRequest, data: web::Data<&AppStat
         "##, &[&id, &(page as i64) as &(dyn ToSql + Sync), &(page_size as i64) as &(dyn ToSql + Sync)]).await {
             Ok(rows) => {
                 let items = rows.into_iter().map_while(|r|
-                    match (r.try_get("id"), r.try_get("name"), r.try_get("time_to_deliver")) {
-                        (Ok(id), Ok(name), Ok(time_to_deliver)) => {
+                    match (r.try_get("id"), r.try_get("name"), r.try_get("time_to_deliver"), r.try_get("state")) {
+                        (Ok(id), Ok(name), Ok(time_to_deliver), Ok(state)) => {
                             Some(Item {
-                                id, name, time_to_deliver
+                                id, name, time_to_deliver, state
                             })
                         },
                         _ => {

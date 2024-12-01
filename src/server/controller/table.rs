@@ -1,5 +1,6 @@
-use crate::server::database::pool::GenericRow;
 use crate::server::database::pool::GenericTransaction;
+use crate::server::database::pool::GenericRow;
+use crate::server::database::pool::DbClient;
 use std::time::Duration;
 use actix_web::{get, patch, web, Responder};
 use actix_web::rt::time;
@@ -8,7 +9,6 @@ use tokio_postgres::types::{ToSql};
 use crate::server::controller::error::CustomError;
 use crate::server::controller::error::CustomError::{BadRequest, DbError, Timeout};
 use crate::server::controller::DB_TIMEOUT_SECONDS;
-use crate::server::database::pool::DbClient;
 use crate::server::model::table::{GetTablesResponse, PatchTablesResponse, Table};
 use crate::server::state::AppState;
 
@@ -30,8 +30,8 @@ async fn patch_table(
                 tokio::select! {
                     result = txn.query_one(r#"SELECT bill_id FROM "table" WHERE id = $1 FOR UPDATE"#, params) => {
                         match result {
-                            Ok(table) => {
-                                match table.try_get::<&str, Option<i64>>("bill_id") {
+                            Ok(row) => {
+                                match row.0.try_get::<&str, Option<i64>>("bill_id") {
                                     Ok(Some(bill_id)) => {
                                         warn!("the table is already taken, bill_id={}", bill_id);
                                         return Err(BadRequest);
@@ -41,7 +41,7 @@ async fn patch_table(
                                     },
                                     Err(e) => {
                                         warn!("query error, {}", e);
-                                        return Err(e);
+                                        return Err(DbError(e));
                                     }
                                 }
                             },
@@ -65,7 +65,7 @@ async fn patch_table(
                 "#, &[&id as &(dyn ToSql + Sync), &crate::server::util::time::helper::get_utc_now() as &(dyn ToSql + Sync)]).await {
                     Ok(row) => {
                         // bind bill to table
-                        let bill_id: i64 = row.get("id");
+                        let bill_id: i64 = row.0.get("id");
                         match txn.execute(r#"
                             UPDATE "table" ta
                             SET bill_id = $2
@@ -87,7 +87,7 @@ async fn patch_table(
                 };
                 match result {
                     Ok(bill_id) => {
-                        txn.0.commit().await.map_err(|e| DbError(e))?;
+                        txn.commit().await.map_err(|e| DbError(e))?;
                         Ok(web::Json(PatchTablesResponse {
                             bill_id,
                         }))

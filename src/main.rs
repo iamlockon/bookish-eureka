@@ -1,3 +1,4 @@
+#![feature(duration_constructors)]
 //! application entry point
 
 extern crate core;
@@ -8,6 +9,7 @@ use std::env;
 use std::net::SocketAddrV4;
 use std::path::Path;
 use std::str::FromStr;
+use tokio_postgres::Client;
 
 mod server;
 
@@ -17,7 +19,7 @@ const DEFAULT_HOST_ADDR: &str = "127.0.0.1:8080";
 const DEFAULT_DB_READ_POOL_CONN_STR: &str = "postgresql://postgres:pass@localhost";
 const DEFAULT_DB_WRITE_POOL_CONN_STR: &str = "postgresql://postgres:pass@localhost";
 
-#[actix_web::main]
+#[actix_web::main()]
 async fn main() -> std::io::Result<()> {
     // bootstrap
     // a. env

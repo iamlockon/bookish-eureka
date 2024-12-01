@@ -18,9 +18,3 @@ pub(crate) struct PostBillItemsRequest {
 }
 
 type MenuItemId = i32;
-
-#[derive(Debug, Serialize)]
-pub(crate) struct DeleteBillItemsResponse {
-    pub result_code: Option<String>,
-}
-

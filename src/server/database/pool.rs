@@ -1,16 +1,18 @@
-use crate::server::database::connection::{Connection, WrappedClient};
+use crate::server::database::connection::{Connection};
+#[cfg(test)]
+use crate::server::database::connection::MockClient;
 use anyhow::Error;
 use log::{error, info};
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Duration;
-use std::{fmt, thread};
+use std::thread;
 use std::fmt::Display;
 use std::ops::{Deref, DerefMut};
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tokio::time;
-use tokio_postgres::{Row, ToStatement};
+use tokio_postgres::{Client, Row, ToStatement};
 use tokio_postgres::row::RowIndex;
 use tokio_postgres::types::{FromSql, ToSql, Type};
 use crate::server::controller::error::CustomError;
@@ -36,33 +38,8 @@ where M: DbClient + Send
     }
 }
 
-/// for test
-pub(crate) struct MockClient;
-impl DbClient for MockClient {
-    #[allow(unused_variables)]
-    async fn query<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<impl GenericRow>, tokio_postgres::Error>
-    where
-        T: ?Sized + ToStatement
-    {
-        println!("query mock client");
-        Ok(Vec::<MockRow>::new())
-    }
-
-    #[allow(unused_variables)]
-    async fn execute<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<u64, tokio_postgres::Error>
-    where
-        T: ?Sized + ToStatement
-    {
-        println!("execute mock client");
-        Ok(u64::MIN)
-    }
-
-    async fn transaction(&mut self) -> Result<WrappedTransaction<impl GenericTransaction>, tokio_postgres::Error> {
-        Ok(WrappedTransaction(MockTransaction{}))
-    }
-}
-
-pub(crate) trait DbClient: Send {
+pub(crate) trait DbClient: Send + Sync + 'static {
+    type Client: Send + 'static;
     async fn query<T>(
         &self,
         statement: &T,
@@ -81,16 +58,16 @@ pub(crate) trait DbClient: Send {
 }
 
 pub(crate) struct CommonPool<M>
-where M : DbClient + Send + 'static
+where M : DbClient<Client = M>
 {
     pub name: String,
     pub connections: Mutex<VecDeque<Connection<M>>>,
 }
 
-pub(crate) struct Pool<M>(Arc<CommonPool<M>>) where M : DbClient + Send + 'static;
+pub(crate) struct Pool<M>(Arc<CommonPool<M>>) where M : DbClient<Client = M>;
 
 impl<M> Clone for Pool<M>
-where M : DbClient + Send
+where M : DbClient<Client = M> + Send
 {
     fn clone(&self) -> Pool<M> {
         Pool(self.0.clone())
@@ -120,7 +97,7 @@ pub(crate) trait GenericTransaction {
         &self,
         statement: &T,
         params: &[&(dyn ToSql + Sync)],
-    ) -> Result<impl GenericRow, tokio_postgres::Error>
+    ) -> Result<WrappedRow<impl GenericRow>, tokio_postgres::Error>
     where
         T: ?Sized + ToStatement;
 
@@ -135,20 +112,40 @@ pub(crate) trait GenericTransaction {
     async fn commit(self) -> Result<(), tokio_postgres::Error>;
 }
 
-pub(crate) struct WrappedRow<R: GenericRow>(R);
+pub(crate) struct WrappedRow<R: GenericRow>(pub R);
 
 pub(crate) trait GenericRow {
     fn get<'a, I, T>(&'a self, idx: I) -> T
     where
-        I: RowIndex + fmt::Display,
+        I: RowIndex + Display,
         T: FromSql<'a>;
     
     fn try_get<'a, I, T>(&'a self, idx: I) -> Result<T, CustomError>
     where
-        I: RowIndex + fmt::Display,
+        I: RowIndex + Display,
         T: FromSql<'a>;
 }
 
+#[cfg(not(test))]
+impl GenericRow for WrappedRow<Row> {
+    fn get<'a, I, T>(&'a self, idx: I) -> T
+    where
+        I: RowIndex + Display,
+        T: FromSql<'a>
+    {
+        self.get(idx)
+    }
+
+    fn try_get<'a, I, T>(&'a self, idx: I) -> Result<T, CustomError>
+    where
+        I: RowIndex + Display,
+        T: FromSql<'a>
+    {
+        self.try_get(idx)
+    }
+}
+
+#[cfg(not(test))]
 impl GenericRow for Row {
     fn get<'a, I, T>(&'a self, idx: I) -> T
     where
@@ -168,7 +165,43 @@ impl GenericRow for Row {
 }
 
 /// for test
+#[cfg(test)]
 pub(crate) struct MockRow;
+
+#[cfg(test)]
+impl MockRow {
+    pub fn new() -> Self {
+        Self{}
+    }
+}
+
+#[cfg(test)]
+impl GenericRow for WrappedRow<MockRow> {
+    #[allow(unused_variables)]
+    fn get<'a, I, T>(&'a self, idx: I) -> T
+    where
+        I: RowIndex + Display,
+        T: FromSql<'a>
+    {
+        println!("get for mock row");
+        T::from_sql(&Type::ANY, &[0]).unwrap() // random impl
+    }
+
+    #[allow(unused_variables)]
+    fn try_get<'a, I, T>(&'a self, idx: I) -> Result<T, CustomError>
+    where
+        I: RowIndex + Display,
+        T: FromSql<'a>
+    {
+        println!("try_get for mock row");
+        match T::from_sql(&Type::ANY, &[0]) {
+            Ok(t) => Ok(t),
+            Err(_) => Err(CustomError::Unknown), // random impl
+        }
+    }
+}
+
+#[cfg(test)]
 impl GenericRow for MockRow {
     #[allow(unused_variables)]
     fn get<'a, I, T>(&'a self, idx: I) -> T
@@ -188,22 +221,31 @@ impl GenericRow for MockRow {
     {
         println!("try_get for mock row");
         match T::from_sql(&Type::ANY, &[0]) {
-            Ok(T) => Ok(T),
+            Ok(t) => Ok(t),
             Err(_) => Err(CustomError::Unknown), // random impl
         }
     }
 }
 
 /// for test
+#[cfg(test)]
 pub(crate) struct MockTransaction;
+#[cfg(test)]
+impl MockTransaction {
+    pub fn new() -> Self {
+        Self{}
+    }
+}
+
+#[cfg(test)]
 impl GenericTransaction for MockTransaction {
     #[allow(unused_variables)]
-    async fn query_one<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<impl GenericRow, tokio_postgres::Error>
+    async fn query_one<T>(&self, statement: &T, params: &[&(dyn ToSql + Sync)]) -> Result<WrappedRow<impl GenericRow>, tokio_postgres::Error>
     where
         T: ?Sized + ToStatement
     {
         println!("query_one mock transaction");
-        Ok(MockRow{})
+        Ok(WrappedRow(MockRow::new()))
     }
 
     #[allow(unused_variables)]
@@ -220,12 +262,13 @@ impl GenericTransaction for MockTransaction {
 }
 
 pub(crate) mod connect_util {
-    use anyhow::Context;use log::error;
-    use tokio_postgres::NoTls;
-    use crate::server::database::connection::WrappedClient;
+    use anyhow::Context;
+    use log::error;
+    use tokio_postgres::{Client, NoTls};
     use crate::server::database::pool::{DbClient};
+    
     #[cfg(not(test))]
-    pub async fn connect(str: &str) -> WrappedClient<impl DbClient> {
+    pub async fn connect<M: DbClient + From<Client>>(str: &str) -> M {
         // abort the process if failed to connect db
         let (client, conn) = tokio_postgres::connect(str, NoTls).await.context("failed to create connection").unwrap();
         tokio::spawn(async move {
@@ -234,18 +277,58 @@ pub(crate) mod connect_util {
                 // TODO: publish metrics for monitoring
             }
         });
-        WrappedClient(client)
+        client.into()
     }
 
     #[cfg(test)]
-    pub async fn connect(str: &str) -> WrappedClient<impl DbClient> {
+    use crate::server::database::pool::MockClient;
+    #[cfg(test)]
+    pub async fn connect<M: DbClient + From<MockClient>>(_: &str) -> M {
         let client = MockClient{};
-        WrappedClient(client)
+        client.into()
+    }
+}
+
+pub(crate) trait Init {
+    async fn init(&mut self, conn_str: String) -> Result<(), Error>;
+}
+
+#[cfg(not(test))]
+impl Init for Pool<Client> {
+    #[cfg(not(test))]
+    async fn init(&mut self, conn_str: String) -> Result<(), Error> {
+        let mut connections: VecDeque<Connection<Client>> = VecDeque::with_capacity(Self::DEFAULT_SIZE);
+        let mut set = JoinSet::new();
+        for _ in 0..Self::DEFAULT_SIZE {
+            let str = conn_str.clone();
+            set.spawn(async move { connect_util::connect::<Client>(str.as_str()).await });
+        }
+        while let Some(res) = set.join_next().await {
+            match res {
+                Ok(wrapped_client) => {
+                    info!("connection created");
+                    connections.push_back(Connection::<Client>::new(wrapped_client, self.clone()));
+                },
+                Err(e) => {
+                    error!("join_next failed when joining, {}", e);
+                }
+            };
+        }
+        self.0.connections.lock().await.append(&mut connections);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+impl Init for Pool<MockClient> {
+    async fn init(&mut self, _: String) -> Result<(), Error> {
+        println!("initializing MockClient.");
+        Ok(())
     }
 }
 
 impl<M> Pool<M>
-where M : DbClient + Send + 'static
+where M : DbClient<Client = M>
 {
     const DEFAULT_SIZE: usize = 10;
     /// create a connection pool with default configuration
@@ -255,30 +338,7 @@ where M : DbClient + Send + 'static
             connections: Mutex::new(VecDeque::with_capacity(Self::DEFAULT_SIZE))
         });
         let pool = Self(shared);
-
         Ok(pool)
-    }
-    
-    pub async fn init(&mut self, conn_str: String) -> Result<(), Error> {
-        let mut connections: VecDeque<Connection<M>> = VecDeque::with_capacity(Self::DEFAULT_SIZE);
-        let mut set = JoinSet::new();
-        for _ in 0..Self::DEFAULT_SIZE {
-            let str = conn_str.clone();
-            set.spawn(async move { connect_util::connect(str.as_str()).await });
-        }
-        while let Some(res) = set.join_next().await {
-            match res {
-                Ok(wrapped_client) => {
-                    info!("connection created");
-                    connections.push_back(Connection::new(wrapped_client, self.clone()));
-                },
-                Err(e) => {
-                    error!("join_next failed when joining, {}", e);
-                }
-            };
-        }
-        self.0.connections.lock().await.append(&mut connections);
-        Ok(())
     }
 
     /// acquire a connection after locking the mutex, which might wait indefinitely.
@@ -291,6 +351,7 @@ where M : DbClient + Send + 'static
     }
 
     /// acquire a connection with specified timeout, bail out if timeout exceeds.
+    #[allow(unused)]
     async fn acquire_with_timeout(&self, timeout: u64) -> Option<Connection<M>> {
         let sleep = time::sleep(Duration::from_millis(timeout));
         tokio::pin!(sleep);
@@ -308,7 +369,7 @@ where M : DbClient + Send + 'static
         }
     }
     
-    pub fn release(&mut self, client: WrappedClient<M>) {
+    pub fn release(&mut self, client: M::Client) {
         let pool = self.0.clone();
         let handle = thread::spawn(move || {
             let mut connections = pool.connections.blocking_lock();
