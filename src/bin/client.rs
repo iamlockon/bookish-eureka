@@ -276,9 +276,13 @@ async fn main() -> Result<(), anyhow::Error> {
             loop {
                 select! {
                     _ = intval.tick() => {},
+                    _ = tokio::signal::ctrl_c() => {
+                        println!("received termination signal, aborting");
+                        break;
+                    }
                 }
                 for _ in 0..concurrency as usize {
-                    tokio::spawn(async {
+                    let handle = tokio::spawn(async { //TODO: graceful handleing
                         // INIT TABLE
                         let table_id = thread_rng().gen_range(TABLE_ID_RANGE);
                         let id = table_id;

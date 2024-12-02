@@ -1,13 +1,13 @@
 services:
-  server:
-    build:
-      context: .
-      target: runtime
-    ports:
-      - '8080:8080'
-    depends_on:
-      pgsql:
-        condition: service_healthy
+#  server:
+#    build:
+#      context: .
+#      target: runtime
+#    ports:
+#      - '8080:8080'
+#    depends_on:
+#      pgsql:
+#        condition: service_healthy
   pgsql:
     image: docker.io/bitnami/postgresql:17
     ports:

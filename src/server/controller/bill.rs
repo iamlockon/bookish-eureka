@@ -73,7 +73,7 @@ async fn post_bill_items(id: web::Path<i64>, body: web::Json<PostBillItemsReques
 
 #[delete("/v1/bill/{id}/item/{item_id}")]
 /// Remove one specific bill item
-async fn delete_bill_items(path: web::Path<(i64, i32)>, data: web::Data<&AppState>) -> Result<impl Responder, CustomError> {
+async fn delete_bill_items(path: web::Path<(i64, i64)>, data: web::Data<&AppState>) -> Result<impl Responder, CustomError> {
     let (id, item_id) = path.into_inner();
     let params: &[&(dyn ToSql + Sync)] = &[&item_id, &id];
     if let Some(conn) = data.get_db_write_pool().acquire().await {

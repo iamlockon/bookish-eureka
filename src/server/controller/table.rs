@@ -171,7 +171,7 @@ async fn post_table(
                                             RETURNING id
                                         "#, &[&bill_id]).await {
                                             Ok(row) => {
-                                                let bill_id = row.get::<&str, i16>("id");
+                                                let bill_id = row.get::<&str, i64>("id");
                                                 info!("checkout table {} with bill id {} successfully", id, bill_id);
                                             },
                                             Err(e) => {
