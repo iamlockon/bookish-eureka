@@ -2,14 +2,14 @@ use crate::server::database::pool::GenericTransaction;
 use crate::server::database::pool::GenericRow;
 use crate::server::database::pool::DbClient;
 use std::time::Duration;
-use actix_web::{get, patch, web, Responder};
+use actix_web::{get, patch, post, put, web, Responder};
 use actix_web::rt::time;
 use log::{error, info, warn};
 use tokio_postgres::types::{ToSql};
 use crate::server::controller::error::CustomError;
 use crate::server::controller::error::CustomError::{BadRequest, DbError, Timeout};
 use crate::server::controller::DB_TIMEOUT_SECONDS;
-use crate::server::model::table::{GetTablesResponse, PatchTablesResponse, Table};
+use crate::server::model::table::{GetTablesResponse, PatchTablesResponse, PostTablesResponse, Table};
 use crate::server::state::AppState;
 
 #[patch("/v1/table/{id}")]
@@ -138,4 +138,104 @@ async fn get_tables(data: web::Data<&AppState>) -> Result<impl Responder, Custom
         };
     }
     Err(CustomError::ServerIsBusy)
+}
+
+
+#[post("/v1/table/{id}")]
+/// checkout a table
+async fn post_table(
+    id: web::Path<i16>,
+    data: web::Data<&AppState>,
+) -> Result<impl Responder, CustomError> {
+    if let Some(mut conn) = data.get_db_write_pool().acquire().await {
+        let client = conn.client.as_mut().unwrap();
+        match client.transaction().await {
+            Ok(txn) => {
+                let id = id.into_inner();
+                let params: &[&(dyn ToSql + Sync)] = &[&id];
+                // check table is eligible for checkout
+                let sleep = time::sleep(Duration::new(DB_TIMEOUT_SECONDS, 0));
+                tokio::pin!(sleep);
+                tokio::select! {
+                    result = txn.query_one(r#"SELECT bill_id FROM "table" WHERE id = $1 FOR UPDATE"#, params) => {
+                        match result {
+                            Ok(row) => {
+                                match row.try_get::<&str, Option<i64>>("bill_id") {
+                                    Ok(Some(bill_id)) => {
+                                        info!("the table :[{}] is eligible for checkout, bill_id={}. Will continue to checkout.", id, bill_id);
+                                        // update the bill
+                                        match txn.query_one(r#"
+                                            UPDATE bill
+                                            SET checkout_at = CURRENT_TIMESTAMP
+                                            WHERE id = $1
+                                            RETURNING id
+                                        "#, &[&bill_id]).await {
+                                            Ok(row) => {
+                                                let bill_id = row.get::<&str, i16>("id");
+                                                info!("checkout table {} with bill id {} successfully", id, bill_id);
+                                            },
+                                            Err(e) => {
+                                                error!("failed to checkout table {}, {}", id, e);
+                                                return Err(DbError(e.into()));
+                                            }
+                                        }
+                                    },
+                                    Ok(None) => {
+                                        warn!("table {} does not have a bill", id);
+                                        return Err(BadRequest);
+                                    },
+                                    Err(e) => {
+                                        warn!("query error, {}", e);
+                                        return Err(DbError(e.into()));
+                                    }
+                                }
+                            },
+                            Err(e) => {
+                                error!("failed to query, {}", e);
+                                return Err(DbError(e.into()));
+                            }
+                        }
+                    },
+                    _ = &mut sleep => {
+                        warn!("timeout when trying to select table for update");
+                        return Err(Timeout);
+                    }
+                }
+
+                // detach bill
+                let result: Result<i16, CustomError> = match txn.query_one(r#"
+                    UPDATE "table"
+                    SET bill_id = NULL
+                    WHERE id = $1
+                    RETURNING id
+                "#, &[&id]).await {
+                    Ok(row) => {
+                        let id = row.get::<&str, i16>("id");
+                        info!("checkout table {} successfully", id);
+                        Ok(id)
+                    },
+                    Err(e) => {
+                        error!("failed to checkout table {}, {}", id, e);
+                        Err(DbError(e.into()))
+                    }
+                };
+                
+                match result {
+                    Ok(id) => {
+                        txn.commit().await.map_err(|e| DbError(e.into()))?;
+                        Ok(web::Json(PostTablesResponse {
+                            id: id as u8
+                        }))
+                    },
+                    Err(e) => Err(e)
+                }
+            },
+            Err(e) => {
+                error!("db error, {}", e);
+                Err(DbError(e.into()))
+            }
+        }
+    } else {
+        Err(CustomError::ServerIsBusy)
+    }
 }

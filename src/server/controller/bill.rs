@@ -75,7 +75,7 @@ async fn post_bill_items(id: web::Path<i64>, body: web::Json<PostBillItemsReques
 /// Remove one specific bill item
 async fn delete_bill_items(path: web::Path<(i64, i32)>, data: web::Data<&AppState>) -> Result<impl Responder, CustomError> {
     let (id, item_id) = path.into_inner();
-    let params: &[&(dyn ToSql + Sync)] = &[&id, &item_id];
+    let params: &[&(dyn ToSql + Sync)] = &[&item_id, &id];
     if let Some(conn) = data.get_db_write_pool().acquire().await {
         let sleep = time::sleep(Duration::new(DB_TIMEOUT_SECONDS, 0));
         tokio::pin!(sleep);
@@ -83,15 +83,7 @@ async fn delete_bill_items(path: web::Path<(i64, i32)>, data: web::Data<&AppStat
         return tokio::select! {
             result = client.execute(r#"
                 UPDATE bill_item SET state = 'deleted'
-                WHERE id = (
-                    SELECT id
-                    FROM bill_item
-                    WHERE state IS DISTINCT FROM 'deleted'
-                    AND bill_id = $1
-                    AND menu_item_id = $2
-                    LIMIT 1
-                    FOR UPDATE
-                )
+                WHERE id = $1 AND bill_id = $2
             "#, params) => {
                 match result {
                     Ok(0) => Err(CustomError::ResourceNotFound),

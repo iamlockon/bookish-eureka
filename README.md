@@ -22,11 +22,12 @@ This is an attempt to create a production-ready application.
 ## APIs
 
 ### Table
-- PATCH /v1/table/{id} : For claiming a table, this creates a new associated bill for tracking bill items.
+- PATCH /v1/table/{id} : For claiming a table, this creates a new bill for tracking bill items, and bind the bill to the table
 - GET /v1/tables : For listing up all tables, and their associated bills.
+- POST /v1/table/{id} : For checking out a table at cashier
 ### Bill
-- POST /v1/bill/{id}/items : Add bill associated items to a bill
-- DELETE /v1/bill/{id}/item/{item_id} : Remove one specific bill item from a bill
+- POST /v1/bill/{id}/items : Add bill associated items to a bill, it's not idempotent so every request creates new items
+- DELETE /v1/bill/{id}/item/{item_id} : Remove one specific bill item from a bill, calling it multiple times is safe
 - GET /v1/bill/{id} : Get bill items for a bill
 
 ## Integration Test

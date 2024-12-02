@@ -5,6 +5,11 @@ pub(crate) struct PatchTablesResponse {
     pub bill_id: i64,
 }
 
+#[derive(Debug, Serialize)]
+pub(crate) struct PostTablesResponse {
+    pub id: u8,
+}
+
 
 #[derive(Debug, Serialize)]
 pub(crate) struct GetTablesResponse {

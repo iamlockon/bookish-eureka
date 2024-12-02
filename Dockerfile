@@ -17,4 +17,4 @@ RUN mv .env.dev ./app
 FROM scratch AS runtime
 WORKDIR /app
 COPY --from=builder /app/app /usr/local/bin/
-ENTRYPOINT ["/usr/local/bin/app"]
+ENTRYPOINT ["RUSTFLAGS=--verbose", "/usr/local/bin/app"]

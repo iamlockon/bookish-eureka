@@ -17,7 +17,7 @@ services:
     environment:
       - 'POSTGRESQL_PASSWORD=pass' # can connect with postgres:pass
     healthcheck:
-      test: ["CMD", "pg_isready"]
+      test: ["CMD", "pg_isready", "-U", "postgres"]
       interval: 10s
       timeout: 5s
       retries: 5

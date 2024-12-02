@@ -16,7 +16,7 @@ use log::error;
 use tokio::signal;
 use tokio_util::sync::CancellationToken;
 use crate::server::controller::bill::{delete_bill_items, get_bill, post_bill_items};
-use crate::server::controller::table::{get_tables, patch_table};
+use crate::server::controller::table::{get_tables, patch_table, post_table};
 use crate::server::scheduler::job::bill_item_sweeper;
 
 static APP_STATE: OnceLock<AppState> = OnceLock::new();
@@ -60,6 +60,7 @@ pub async fn run(
             .service(patch_table)
             .service(post_bill_items)
             .service(delete_bill_items)
+            .service(post_table)
     })
     .bind(addr)?
     .run()
