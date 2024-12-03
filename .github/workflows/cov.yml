@@ -16,11 +16,11 @@ jobs:
         with:
           github-token: ${{ secrets.GH_PAT }}
           script: |
-            summary=$(cargo +nightly tarpaulin --timeout 120 --out StdOut)
+            summary=$(cargo +nightly tarpaulin --timeout 120 --out StdOut);
             const body = `${summary}`;
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
               body: body
-            })
+            });
