@@ -1,23 +1,24 @@
+use std::env;
 use crate::server::database::pool::GenericRow;
 use crate::server::database::pool::DbClient;
 use log::{error, info};
 use tokio::{pin, select, time};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::task_tracker;
+use crate::DEFAULT_DB_WRITE_POOL_CONN_STR;
 use crate::server::database::pool::{Init, Pool};
-
-const DEFAULT_DB_WRITE_POOL_CONN_STR: &str = "postgresql://postgres:pass@localhost";
 
 async fn worker(cancel_token: CancellationToken) {
     let mut write_pool = Pool::new().await.unwrap();
-    write_pool.init(DEFAULT_DB_WRITE_POOL_CONN_STR.to_string()).await.ok();
+    let conn_str = env::var("DB_WRITE_POOL_CONN_STR").unwrap_or(DEFAULT_DB_WRITE_POOL_CONN_STR.to_string());
+    write_pool.init(conn_str).await.ok();
     let interval = time::interval(time::Duration::new(60, 0)); // run once every minute
     pin!(interval);
     loop {
         select! {
             _ = interval.tick() => {},
             _ = cancel_token.cancelled() => {
-                info!("received cancel signal, returning gracefully");
+                info!("received cancel signal, returning");
                 return;
             }
         }

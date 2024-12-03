@@ -6,6 +6,7 @@ use std::env;
 use std::net::SocketAddrV4;
 use std::path::Path;
 use std::str::FromStr;
+use derive_more::Display;
 use tokio_postgres::Client;
 
 mod server;
@@ -14,7 +15,7 @@ const DOTENV_LOADING_FAILED_MSG: &str = "failed to load envs from dotenv files, 
 const HOST_PARSING_FAILED_MSG: &str = "failed to parse HOST, aborting";
 const DEFAULT_HOST_ADDR: &str = "127.0.0.1:8080";
 const DEFAULT_DB_READ_POOL_CONN_STR: &str = "postgresql://postgres:pass@localhost";
-const DEFAULT_DB_WRITE_POOL_CONN_STR: &str = "postgresql://postgres:pass@localhost";
+const DEFAULT_DB_WRITE_POOL_CONN_STR: &str = "postgresql://postgres:pass@localhost"; // TODO:use different user from read pool
 
 #[actix_web::main()]
 async fn main() -> std::io::Result<()> {
@@ -50,12 +51,12 @@ async fn main() -> std::io::Result<()> {
         db_write_conn_string,
     );
 
-    info!("App is starting in env={:?}", env);
+    info!("App is starting in env={}", env);
 
     server::run(config).await
 }
 
-#[derive(Debug)]
+#[derive(Debug, Display)]
 #[non_exhaustive]
 enum Env {
     Dev,

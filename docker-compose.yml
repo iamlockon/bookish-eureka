@@ -1,14 +1,19 @@
 services:
-#  server:
-#    build:
-#      context: .
-#      target: runtime
-#    ports:
-#      - '8080:8080'
-#    depends_on:
-#      pgsql:
-#        condition: service_healthy
-  pgsql:
+  server:
+    build:
+      context: .
+      target: runtime
+    ports:
+      - '8080:8080'
+    environment:
+      - 'APP_ENV=stg'
+      - 'HOST=0.0.0.0:8080'
+      - 'DB_READ_POOL_CONN_STR=postgresql://postgres:pass@db'
+      - 'DB_WRITE_POOL_CONN_STR=postgresql://postgres:pass@db'
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
     image: docker.io/bitnami/postgresql:17
     ports:
       - '5432:5432'

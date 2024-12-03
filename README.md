@@ -6,19 +6,6 @@ This is an attempt to create a production-ready application.
 - server: http server to process requests from the client.
 - client: cli to interact with the server.
 
-## Requirements
-- [ ] The client (the restaurant staff “devices” making the requests) MUST be able to:
-  - [x] add one or more items with a table number
-  - [x] remove an item for a table
-  - [ ] query the items still remaining for a table.
-- [x] The application MUST, upon creation request, store
-  - [ ] the item, the table number, and how long the item will take to cook.
-- [x] The application MUST, upon deletion request, remove a specified item for a specified table number.
-- [x] The application MUST, upon query request, show all items for a specified table number.
-- [x] The application MUST, upon query request, show a specified item for a specified table number.
-- [ ] The application MUST accept at least 10 simultaneous incoming add/remove/query requests.
-- [x] The server API MUST fully follow REST API principles and present a set of HTTP endpoints to connect to.
-
 ## APIs
 
 ### Table
@@ -30,11 +17,52 @@ This is an attempt to create a production-ready application.
 - DELETE /v1/bill/{id}/item/{item_id} : Remove one specific bill item from a bill, calling it multiple times is safe
 - GET /v1/bill/{id} : Get bill items for a bill
 
-## Integration Test
+## Usage
 
-### Prerequisites
-- Latest Podman (or Colima, Docker, etc. I use Podman for Desktop on Windows)
-- 
+### Server
+```bash
+$ cargo run --bin server
+```
+### Client
+```bash
+$ cargo run --features="build-client" --bin client
+```
+### Integration test
+
+#### Prerequisites
+- OCI Container runtimes like Podman, Colima, or Docker.
+  - One might need to install plugin for compose subcommand.
+
+#### Steps (Using Podman as an example)
+
+1. Bring up the backend service (server, database)
+```bash
+$ podman compose up [--build]
+```
+2. After it's ready, run database migration(s)
+```bash
+$ cargo run --bin refinery_migration
+```
+3. Run client command with desired simulated concurrency
+```bash
+$ cargo run --features="build-client" --bin client test CONCURRENCY
+```
+
+## CI
+- use tarpaulin to generate code coverage and paste comment to pull requests.
+
+## Requirements
+- [x] The client (the restaurant staff “devices” making the requests) MUST be able to:
+  - [x] add one or more items with a table number
+  - [x] remove an item for a table
+  - [x] query the items still remaining for a table.
+- [x] The application MUST, upon creation request, store
+  - [x] the item, the table number, and how long the item will take to cook.
+- [x] The application MUST, upon deletion request, remove a specified item for a specified table number.
+- [x] The application MUST, upon query request, show all items for a specified table number.
+- [x] The application MUST, upon query request, show a specified item for a specified table number.
+- [x] The application MUST accept at least 10 simultaneous incoming add/remove/query requests.
+- [x] The server API MUST fully follow REST API principles and present a set of HTTP endpoints to connect to.
 
 ## Limitations
 - Currently, server address only supports IPv4.
