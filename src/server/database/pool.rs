@@ -320,6 +320,7 @@ impl Init for Pool<Client> {
 impl Init for Pool<MockClient> {
     async fn init(&mut self, _: String) -> Result<(), Error> {
         println!("initializing MockClient.");
+        self.0.connections.lock().await.push_back(Connection::new(MockClient{}, self.clone()));
         Ok(())
     }
 }
@@ -375,4 +376,30 @@ where M : DbClient<Client = M>
     }
 }
 
-
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[tokio::test]
+    async fn test_new() {
+        let pool = Pool::<MockClient>::new().await.unwrap();
+    }
+    
+    #[tokio::test]
+    async fn test_acquire_and_release() {
+        let mut pool = Pool::<MockClient>::new().await.unwrap();
+        assert!(pool.acquire().await.is_none());
+        
+        pool.init("conn_str".to_string()).await.unwrap();
+        {
+            let _conn = match pool.acquire().await {
+                Some(conn) => conn,
+                None => panic!("should get some"),
+            };
+            assert!(pool.acquire().await.is_none());
+        } // conn drops here, and is released automatically
+        
+        assert!(pool.acquire().await.is_some());
+        assert!(pool.acquire().await.is_some());
+    }
+}
