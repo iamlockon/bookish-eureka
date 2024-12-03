@@ -17,7 +17,7 @@ jobs:
       - name: Generate code coverage
         id: cov
         run: |
-          summary=$(cargo +nightly tarpaulin --timeout 120 --out xml)
+          summary=$(cargo +nightly tarpaulin --timeout 120 --out html)
           delimiter="$(openssl rand -hex 8)"
           echo "summary<<${delimiter}" >> $GITHUB_OUTPUT
           echo "## Coverage summary" >> $GITHUB_OUTPUT
