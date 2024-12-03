@@ -12,10 +12,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - uses: Swatinem/rust-cache@v2
+
       - name: Generate code coverage
         id: cov
         run: |
-          summary=$(cargo +nightly tarpaulin --timeout 120 --out StdOut)
+          summary=$(cargo +nightly tarpaulin --timeout 120 --out xml)
           delimiter="$(openssl rand -hex 8)"
           echo "summary<<${delimiter}" >> $GITHUB_OUTPUT
           echo "## Coverage summary" >> $GITHUB_OUTPUT
