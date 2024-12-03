@@ -68,14 +68,6 @@ where M : DbClient<Client = M>
 
 pub(crate) struct Pool<M>(Arc<CommonPool<M>>) where M : DbClient<Client = M>;
 
-impl<M> Default for Pool<M>
-where M : DbClient<Client = M>
-{
-    fn default() -> Self {
-        Self(Arc::new(CommonPool{ connections: Mutex::new(VecDeque::new())}))
-    }
-}
-
 impl<M> Clone for Pool<M>
 where M : DbClient<Client = M>
 {
@@ -379,17 +371,17 @@ where M : DbClient<Client = M>
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[tokio::test]
     async fn test_new() {
         let pool = Pool::<MockClient>::new().await.unwrap();
     }
-    
+
     #[tokio::test]
     async fn test_acquire_and_release() {
         let mut pool = Pool::<MockClient>::new().await.unwrap();
         assert!(pool.acquire().await.is_none());
-        
+
         pool.init("conn_str".to_string()).await.unwrap();
         {
             let _conn = match pool.acquire().await {
@@ -398,7 +390,7 @@ mod tests {
             };
             assert!(pool.acquire().await.is_none());
         } // conn drops here, and is released automatically
-        
+
         assert!(pool.acquire().await.is_some());
         assert!(pool.acquire().await.is_some());
     }

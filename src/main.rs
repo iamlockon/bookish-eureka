@@ -76,3 +76,15 @@ impl FromStr for Env {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_from_str() {
+        assert!(Env::from_str("dev").is_ok());
+        assert!(Env::from_str("stg").is_ok());
+        assert!(Env::from_str("prod").is_ok());
+        assert!(Env::from_str("foo").is_err());
+    }
+}
