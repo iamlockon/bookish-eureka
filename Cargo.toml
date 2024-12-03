@@ -43,7 +43,7 @@ clap = { version = "4.5.21", features = ["derive"], optional = true }
 reqwest = { version = "0.12.9", features = ["json"], optional = true }
 
 [features]
-build-client = ["clap", "reqwest", "serde_json/default", "rand/default", "tokio/time", "tokio/signal"]
+build-client = ["clap", "reqwest", "serde_json/default", "rand/default", "tokio/time", "tokio/signal", "tokio/rt"]
 
 # Other binary configuration
 

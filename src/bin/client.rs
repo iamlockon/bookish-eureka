@@ -274,15 +274,8 @@ async fn main() -> Result<(), anyhow::Error> {
             let intval = tokio::time::interval(Duration::new(0, 500_000_000)); // emit a batch of request every 0.5 second
             pin!(intval);
             loop {
-                select! {
-                    _ = intval.tick() => {},
-                    _ = tokio::signal::ctrl_c() => {
-                        println!("received termination signal, aborting");
-                        break;
-                    }
-                }
                 for _ in 0..concurrency as usize {
-                    let handle = tokio::spawn(async { //TODO: graceful handleing
+                    tokio::spawn(async {
                         // INIT TABLE
                         let table_id = thread_rng().gen_range(TABLE_ID_RANGE);
                         let id = table_id;
@@ -306,12 +299,13 @@ async fn main() -> Result<(), anyhow::Error> {
                                 panic!("force abort as server is not healthy when initing tables");
                             },
                         };
+
                         // ADD ITEMS
                         const MENU_SIZE: usize = 5;
                         const MENU_ITEM_ID_RANGE: RangeInclusive<i64> = (1..=5); // there are only 5 menu items, update upper bound to create some BAD_REQUEST possibilities.
                         let menu_ids = (0..MENU_SIZE).into_iter().fold(vec![], |mut acc, _| {
                             acc.push(thread_rng().gen_range(MENU_ITEM_ID_RANGE));
-                            acc   
+                            acc
                         });
                         let res = Client::new()
                             .post(format!("{}/{}", HOST, format!("v1/bill/{}/items", bill_id)))
@@ -340,8 +334,8 @@ async fn main() -> Result<(), anyhow::Error> {
                         let items = match res.status() {
                             StatusCode::OK => {
                                 let res = res.json::<GetBillResponse>().await.expect("failed to get response for bill items");
-                                let res_items = res.bill.map(|b|b.items).take().unwrap();
-                                let items =  res_items.0.into_iter().map(|item| item.id).collect::<Vec<_>>();
+                                let res_items = res.bill.map(|b| b.items).take().unwrap();
+                                let items = res_items.0.into_iter().map(|item| item.id).collect::<Vec<_>>();
                                 println!("items for bill = [{}] => {:?}", bill_id, &items);
                                 items
                             },
@@ -417,7 +411,16 @@ async fn main() -> Result<(), anyhow::Error> {
                                 println!("got unexpected status code, {}", unexpected);
                             },
                         }
-                    });   
+                    });
+                }
+                select! {
+                    _ = intval.tick() => {},
+                    _ = tokio::signal::ctrl_c() => {
+                        println!("received termination signal, start to wait (5 seconds) for clients to finish");
+                        tokio::time::sleep(Duration::new(5, 0)).await;
+                        println!("shutting down.");
+                        break;
+                    }
                 }
             }
         }

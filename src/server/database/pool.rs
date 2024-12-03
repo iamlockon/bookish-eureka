@@ -2,11 +2,11 @@ use crate::server::database::connection::{Connection};
 #[cfg(test)]
 use crate::server::database::connection::MockClient;
 use anyhow::{anyhow, Error};
-use log::{error, info};
+use log::{error, info, warn};
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Duration;
-use std::thread;
+use std::{mem, thread};
 use std::fmt::Display;
 use std::ops::{Deref, DerefMut};
 use tokio::sync::Mutex;
@@ -68,8 +68,16 @@ where M : DbClient<Client = M>
 
 pub(crate) struct Pool<M>(Arc<CommonPool<M>>) where M : DbClient<Client = M>;
 
+impl<M> Default for Pool<M>
+where M : DbClient<Client = M>
+{
+    fn default() -> Self {
+        Self(Arc::new(CommonPool{ connections: Mutex::new(VecDeque::new())}))
+    }
+}
+
 impl<M> Clone for Pool<M>
-where M : DbClient<Client = M> + Send
+where M : DbClient<Client = M>
 {
     fn clone(&self) -> Pool<M> {
         Pool(self.0.clone())
@@ -367,29 +375,4 @@ where M : DbClient<Client = M>
     }
 }
 
-// impl Drop for PgPool {
-//     fn drop(&mut self) {
-//         let pool = mem::take(self);
-//         let handle = thread::spawn(move || {
-//             info!("dropping connections");
-//             println!("dropping connections");
-//             let mut connections = pool.connections.blocking_lock();
-//             connections.clear();
-//             info!("dropped connections");
-//         });
-//         handle.join().unwrap();
-//         info!("finished up");
-//         // match tokio::runtime::Builder::new_current_thread().build() {
-//         //     Ok(rt) => {
-//         //         rt.block_on(async {
-//         //             let mut connections = self.connections.lock().await;
-//         //             connections.clear();
-//         //         });
-//         //         info!("cleaned up connection pool ({})", name);
-//         //     }
-//         //     Err(error) => {
-//         //         warn!("failed to clean up connection pool ({}), {}", name, error);
-//         //     }
-//         // }
-//     }
-// }
+

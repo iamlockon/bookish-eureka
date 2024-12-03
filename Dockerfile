@@ -11,10 +11,11 @@ COPY --from=planner /app/recipe.json .
 RUN cargo chef cook --release
 COPY . .
 RUN cargo build --release
-RUN mv ./target/release/server ./app
-RUN mv .env.dev ./app
+RUN mv ./target/release/server ./server
+RUN mv .env.dev ./.env.dev
 
 FROM scratch AS runtime
 WORKDIR /app
-COPY --from=builder /app/app /usr/local/bin/
-ENTRYPOINT ["bash"]
+COPY --from=builder /app/server /usr/local/bin/
+COPY --from=builder /app/.env.dev /usr/local/bin/
+ENTRYPOINT ["/usr/local/bin/server"]
