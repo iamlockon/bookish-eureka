@@ -1,6 +1,6 @@
 # bookish-eureka
 
-This is an attempt to create a production-ready application.
+This is an attempt to create a production-ready application while I am still not well-versed in Rust yet.
 
 ## Components
 - server: http server to process requests from the client.
