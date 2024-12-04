@@ -84,6 +84,7 @@ rustc 1.84.0-nightly (b3f75cc87 2024-11-02)
 ```
 
 ## Future works
+- Test : Add more tests to increase test coverage, currently unit test coverage is low (~16%)
 - Authentication : Guard the API endpoints, e.g. Oauth2.
 - Observability : Monitoring for the service & database, e.g. opentelemetry + tracing + Prometheus + Grafana.
 - Refactor : Create service/repository layers instead of clogging request handler methods with all kinds of operations.

@@ -17,18 +17,11 @@ use tokio_postgres::row::RowIndex;
 use tokio_postgres::types::{FromSql, ToSql, Type};
 use crate::server::controller::error::CustomError;
 
-#[derive(Default)]
-pub(crate) struct PgPool<M>
-where M: DbClient
-{
-    /// pool name
-    name: String,
-    /// connections in the pool, accessed in a FIFO manner
-    connections: Mutex<VecDeque<M>>,
-}
-
+/// A trait that abstracts out the postgres database client interface from implementation
 pub(crate) trait DbClient: Send + Sync + 'static {
     type Client: Send + 'static;
+    
+    /// General query to a postgres database
     async fn query<T>(
         &self,
         statement: &T,
@@ -36,6 +29,8 @@ pub(crate) trait DbClient: Send + Sync + 'static {
     ) -> Result<Vec<impl GenericRow>, tokio_postgres::Error>
     where
         T: ?Sized + ToStatement;
+    
+    /// Execute a statement where at most affected rows is needed
     async fn execute<T>(
         &self,
         statement: &T,
@@ -43,18 +38,22 @@ pub(crate) trait DbClient: Send + Sync + 'static {
     ) -> Result<u64, tokio_postgres::Error>
     where
         T: ?Sized + ToStatement;
+    
+    /// Start a database transaction and get a transaction object back for operations
     #[cfg(not(test))]
     async fn transaction(&mut self) -> Result<WrappedTransaction<Transaction<'_>>, tokio_postgres::Error>;
     #[cfg(test)]
     async fn transaction(&mut self) -> Result<MockTransaction, tokio_postgres::Error>;
 }
 
+/// A connection pool struct that contains a connections queue
 pub(crate) struct CommonPool<M>
 where M : DbClient<Client = M>
 {
     pub connections: Mutex<VecDeque<Connection<M>>>,
 }
 
+/// A connection pool wrapper that is safe to send across threads
 pub(crate) struct Pool<M>(Arc<CommonPool<M>>) where M : DbClient<Client = M>;
 
 impl<M> Clone for Pool<M>
@@ -70,6 +69,7 @@ pub(crate) struct WrappedTransaction<T: GenericTransaction<Row>>(pub T);
 #[cfg(test)]
 pub(crate) struct WrappedTransaction<T: GenericTransaction<MockRow>>(pub T);
 
+/// An abstraction over the real transaction implementations
 pub(crate) trait GenericTransaction<R: GenericRow> {
     async fn query_one<T>(
         &self,
@@ -92,6 +92,7 @@ pub(crate) trait GenericTransaction<R: GenericRow> {
 
 pub(crate) struct WrappedRow<R: GenericRow>(pub R);
 
+/// A database row abstraction
 pub(crate) trait GenericRow {
     fn get<'a, I, T>(&'a self, idx: I) -> T
     where
@@ -239,6 +240,7 @@ impl GenericTransaction<MockRow> for MockTransaction {
     }
 }
 
+/// A module that provides database connection methods, mainly to abstract it out from Pool implementation.
 pub(crate) mod connect_util {
     use anyhow::Context;
     use log::error;
@@ -267,7 +269,9 @@ pub(crate) mod connect_util {
     }
 }
 
+/// A trait for initializing database connection pools
 pub(crate) trait Init {
+    /// Create a connection pool that constitutes database connections 
     async fn init(&mut self, conn_str: String) -> Result<(), Error>;
 }
 
@@ -310,7 +314,7 @@ impl<M> Pool<M>
 where M : DbClient<Client = M>
 {
     const DEFAULT_SIZE: usize = 10;
-    /// create a connection pool with default configuration
+    /// Create a connection pool container with default configuration
     pub async fn new() -> Result<Self, Error> {
         let shared = Arc::new(CommonPool{
             connections: Mutex::new(VecDeque::with_capacity(Self::DEFAULT_SIZE))
@@ -319,7 +323,7 @@ where M : DbClient<Client = M>
         Ok(pool)
     }
 
-    /// acquire a connection with specified timeout, bail out if timeout exceeds.
+    /// Acquire a connection with specified timeout, bail out if timeout exceeds.
     #[allow(unused)]
     pub async fn acquire(&self, timeout: u64) -> Option<Connection<M>> {
         let sleep = time::sleep(Duration::new(timeout, 0));
@@ -338,6 +342,7 @@ where M : DbClient<Client = M>
         }
     }
     
+    /// Put a client back to the pool
     pub fn release(&mut self, client: M::Client) {
         let pool = self.0.clone();
         let handle = thread::spawn(move || {

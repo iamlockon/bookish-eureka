@@ -3,6 +3,7 @@ use tokio_postgres::Client;
 use crate::server::database::connection::MockClient;
 use crate::server::database::pool::{DbClient, Pool};
 
+/// Application states
 #[derive(Clone)]
 #[cfg(not(test))]
 pub(crate) struct AppState {
@@ -18,6 +19,7 @@ pub(crate) struct AppState {
 }
 
 impl AppState {
+    /// Create a new AppState instance
     #[cfg(not(test))]
     pub fn new(db_read_pool: Pool<Client>, db_write_pool: Pool<Client>) -> Self {
         Self {
@@ -26,11 +28,13 @@ impl AppState {
         }
     }
 
+    /// Get a read-only pool reference
     #[cfg(not(test))]
     pub fn get_db_read_pool(&self) -> Pool<Client> {
         self.db_read_pool.clone()
     }
 
+    /// Get a read-write pool reference
     #[cfg(not(test))]
     pub fn get_db_write_pool(&self) -> Pool<Client> {
         self.db_write_pool.clone()
