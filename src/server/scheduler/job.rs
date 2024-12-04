@@ -6,8 +6,10 @@ use tokio::{pin, select, time};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::task_tracker;
 use crate::DEFAULT_DB_WRITE_POOL_CONN_STR;
+use crate::server::DB_TIMEOUT_SECONDS;
 use crate::server::database::pool::{Init, Pool};
 
+/// Worker for the job scheduler, it takes a CancellationToken to be able to be gracefully cancelled when needed.
 async fn worker(cancel_token: CancellationToken) {
     let mut write_pool = Pool::new().await.unwrap();
     let conn_str = env::var("DB_WRITE_POOL_CONN_STR").unwrap_or(DEFAULT_DB_WRITE_POOL_CONN_STR.to_string());
@@ -23,7 +25,7 @@ async fn worker(cancel_token: CancellationToken) {
             }
         }
 
-        let local_conn = write_pool.acquire().await.unwrap();
+        let local_conn = write_pool.acquire(DB_TIMEOUT_SECONDS).await.unwrap();
         let client = local_conn.client.as_ref().unwrap();
         let ids = match client.query(r#"
                 SELECT id
@@ -62,6 +64,8 @@ async fn worker(cancel_token: CancellationToken) {
     }
 }
 
+/// a scheduled job that updates bill items if it is delivered already,
+/// according to the original designated time_to_deliver
 pub async fn bill_item_sweeper(cancel_token: CancellationToken) {
     loop {
         let tracker = task_tracker::TaskTracker::new();
@@ -72,5 +76,46 @@ pub async fn bill_item_sweeper(cancel_token: CancellationToken) {
                 break;   
             }
         }
+    }
+}
+
+
+#[cfg(test)]
+mod test {
+    use std::time::Duration;
+    use super::*;
+
+    #[tokio::test]
+    async fn test_worker() {
+        let cancel_token = CancellationToken::new();
+        let worker_cancel_token = cancel_token.clone();
+        let sleeper_cancel_token = cancel_token.clone();
+        let actual = select! {
+            _ = worker(worker_cancel_token) => {
+                "unexpected"    
+            },
+            _ = time::sleep(Duration::new(2, 0)) => {
+                sleeper_cancel_token.cancel();
+                "expected"
+            }
+        };
+        assert_eq!(actual, "expected");
+    }
+    
+    #[tokio::test]
+    async fn test_bill_item_sweeper() {
+        let cancel_token = CancellationToken::new();
+        let sweeper_cancel_token = cancel_token.clone();
+        let sleeper_cancel_token = cancel_token.clone();
+        let actual = select! {
+            _ = bill_item_sweeper(sweeper_cancel_token) => {
+                "unexpected"
+            },
+            _ = time::sleep(Duration::new(2, 0)) => {
+                sleeper_cancel_token.cancel();
+                "expected"
+            }
+        };
+        assert_eq!(actual, "expected");
     }
 }

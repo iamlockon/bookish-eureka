@@ -1,5 +1,6 @@
 use chrono::DateTime;
 
+/// A helper module to provide time related methods depends on runtime config
 pub(crate) mod helper {
     #[cfg(not(test))]
     pub use super::get_utc_now;

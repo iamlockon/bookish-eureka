@@ -1,6 +1,6 @@
 # bookish-eureka
 
-This is an attempt to create a production-ready application.
+This is an attempt to create a production-ready application while I am still not well-versed in Rust yet.
 
 ## Components
 - server: http server to process requests from the client.
@@ -66,3 +66,25 @@ $ cargo run --features="build-client" --bin client test CONCURRENCY
 
 ## Limitations
 - Currently, server address only supports IPv4.
+
+## MSRV
+Unknown. Used cargo-msrv it failed with below messages:
+```
+Result:
+   Considered (min … max):   Rust 1.56.1 … Rust 1.83.0
+   Search method:            bisect
+   MSRV:                     N/A
+   Target:                   x86_64-pc-windows-msvc
+
+Unable to find a Minimum Supported Rust Version (MSRV).
+```
+But I build this project without issues on below toolchain version:
+```
+rustc 1.84.0-nightly (b3f75cc87 2024-11-02)
+```
+
+## Future works
+- Test : Add more tests to increase test coverage, currently unit test coverage is low (~16%)
+- Authentication : Guard the API endpoints, e.g. Oauth2.
+- Observability : Monitoring for the service & database, e.g. opentelemetry + tracing + Prometheus + Grafana.
+- Refactor : Create service/repository layers instead of clogging request handler methods with all kinds of operations.

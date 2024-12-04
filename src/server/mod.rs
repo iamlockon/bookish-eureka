@@ -11,7 +11,7 @@ use crate::server::database::pool::{DbClient, Init, Pool};
 use crate::server::model::config::ServerConfig;
 use crate::server::state::AppState;
 use actix_web::{middleware::Logger, web, App, HttpServer};
-use std::sync::{OnceLock};
+use std::sync::OnceLock;
 use log::error;
 use tokio::signal;
 use tokio_util::sync::CancellationToken;
@@ -83,3 +83,5 @@ async fn db_jobs() -> std::io::Result<()> {
     }
     Ok(())
 }
+
+pub const DB_TIMEOUT_SECONDS: u64 = 1;

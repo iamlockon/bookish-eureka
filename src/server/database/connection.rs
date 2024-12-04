@@ -5,6 +5,8 @@ use crate::server::database::pool::{Pool, DbClient, GenericTransaction, WrappedT
 #[cfg(test)]
 use crate::server::database::pool::{MockRow, MockTransaction};
 
+/// Represent a database connection entity, it is a wrapper for database clients and contain 
+/// a pointer to the connection pool to which it belongs.
 pub(crate) struct Connection<M>
 where M: DbClient<Client = M>
 {
@@ -95,6 +97,7 @@ impl GenericTransaction<Row> for Transaction<'_> {
 impl<M> Connection<M>
 where M : DbClient<Client = M>
 {
+    /// Create a connection entity
     pub fn new(client: M::Client, pool: Pool<M>) -> Self {
         Self { client: Some(client), pool }
     }
@@ -105,5 +108,30 @@ where M: DbClient<Client = M>
 {
     fn drop(&mut self) {
         self.pool.release(self.client.take().unwrap());
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use crate::server::database::connection::MockClient;
+    use crate::server::database::pool::DbClient;
+
+    #[tokio::test]
+    async fn test_client_query() {
+        let client = MockClient{};
+        assert!(client.query("", &[]).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_client_execute() {
+        let client = MockClient{};
+        assert!(client.execute("", &[]).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_client_transaction() {
+        let mut client = MockClient{};
+        assert!(client.transaction().await.is_ok());
     }
 }

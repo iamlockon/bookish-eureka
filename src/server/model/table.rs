@@ -16,6 +16,7 @@ pub(crate) struct GetTablesResponse {
     pub tables: Option<Vec<Table>>, 
 }
 
+/// A table in the restaurant
 #[derive(Debug, Serialize)]
 pub(crate) struct Table {
     pub id: u8,
