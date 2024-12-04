@@ -12,7 +12,7 @@ use tokio_postgres::{Client, Row};
 use tokio_postgres::error::SqlState;
 use tokio_postgres::types::ToSql;
 use crate::server::controller::error::CustomError;
-use crate::server::controller::DB_TIMEOUT_SECONDS;
+use crate::server::DB_TIMEOUT_SECONDS;
 use crate::server::model::CommonRequestParams;
 use crate::server::model::item::Item;
 use crate::server::database::pool::DbClient;
@@ -22,7 +22,7 @@ use crate::server::database::pool::DbClient;
 async fn post_bill_items(id: web::Path<i64>, body: web::Json<PostBillItemsRequest>, data: web::Data<&AppState>) -> Result<impl Responder, CustomError> {
     const COLUMN_LEN: usize = 5;
     const TIME_TO_DELIVER_RANGE: RangeInclusive<i32> = 5..=15;
-    if let Some(mut conn) = data.get_db_write_pool().acquire().await {
+    if let Some(mut conn) = data.get_db_write_pool().acquire(DB_TIMEOUT_SECONDS).await {
         let mut stmt = "INSERT INTO bill_item(bill_id, menu_item_id, state, time_to_deliver, created_at) VALUES".to_string();
         let mut idx = 1;
         let mut params: Vec<&(dyn ToSql + Sync)> = Vec::with_capacity(body.items.len() * COLUMN_LEN);
@@ -76,7 +76,7 @@ async fn post_bill_items(id: web::Path<i64>, body: web::Json<PostBillItemsReques
 async fn delete_bill_items(path: web::Path<(i64, i64)>, data: web::Data<&AppState>) -> Result<impl Responder, CustomError> {
     let (id, item_id) = path.into_inner();
     let params: &[&(dyn ToSql + Sync)] = &[&item_id, &id];
-    if let Some(conn) = data.get_db_write_pool().acquire().await {
+    if let Some(conn) = data.get_db_write_pool().acquire(DB_TIMEOUT_SECONDS).await {
         let sleep = time::sleep(Duration::new(DB_TIMEOUT_SECONDS, 0));
         tokio::pin!(sleep);
         let client = conn.client.as_ref().unwrap();
@@ -106,7 +106,7 @@ async fn delete_bill_items(path: web::Path<(i64, i64)>, data: web::Data<&AppStat
 #[get("/v1/bill/{id}")]
 /// get bill items
 async fn get_bill(id: web::Path<i64>, req: HttpRequest, data: web::Data<&AppState>) -> Result<impl Responder, CustomError> {
-    if let Some(conn) = data.get_db_read_pool().acquire().await {
+    if let Some(conn) = data.get_db_read_pool().acquire(DB_TIMEOUT_SECONDS).await {
         let maybe_queries = web::Query::<CommonRequestParams>::from_query(req.query_string()).context("failed to parse query string");
         if maybe_queries.is_err() {
             return Err(CustomError::BadRequest);

@@ -107,3 +107,28 @@ where M: DbClient<Client = M>
         self.pool.release(self.client.take().unwrap());
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use crate::server::database::connection::MockClient;
+    use crate::server::database::pool::DbClient;
+
+    #[tokio::test]
+    async fn test_client_query() {
+        let client = MockClient{};
+        assert!(client.query("", &[]).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_client_execute() {
+        let client = MockClient{};
+        assert!(client.execute("", &[]).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_client_transaction() {
+        let mut client = MockClient{};
+        assert!(client.transaction().await.is_ok());
+    }
+}

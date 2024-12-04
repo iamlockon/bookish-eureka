@@ -27,17 +27,6 @@ where M: DbClient
     connections: Mutex<VecDeque<M>>,
 }
 
-impl<M> PgPool<M>
-where M: DbClient + Send
-{
-    pub fn new(name: String) -> Self {
-        Self {
-            name,
-            connections: Mutex::new(VecDeque::new()),
-        }
-    }
-}
-
 pub(crate) trait DbClient: Send + Sync + 'static {
     type Client: Send + 'static;
     async fn query<T>(
@@ -330,18 +319,9 @@ where M : DbClient<Client = M>
         Ok(pool)
     }
 
-    /// acquire a connection after locking the mutex, which might wait indefinitely.
-    pub async fn acquire(&self) -> Option<Connection<M>> {
-        let mut connections = self.0.connections.lock().await;
-        if let Some(conn) = connections.pop_front() {
-            return Some(conn);
-        }
-        None
-    }
-
     /// acquire a connection with specified timeout, bail out if timeout exceeds.
     #[allow(unused)]
-    async fn acquire_with_timeout(&self, timeout: u64) -> Option<Connection<M>> {
+    pub async fn acquire(&self, timeout: u64) -> Option<Connection<M>> {
         let sleep = time::sleep(Duration::new(timeout, 0));
         tokio::pin!(sleep);
         tokio::select! {
@@ -370,28 +350,29 @@ where M : DbClient<Client = M>
 
 #[cfg(test)]
 mod tests {
+    use crate::server::DB_TIMEOUT_SECONDS;
     use super::*;
 
     #[tokio::test]
     async fn test_new() {
         let pool = Pool::<MockClient>::new().await.unwrap();
     }
-
+    
     #[tokio::test]
     async fn test_acquire_and_release() {
         let mut pool = Pool::<MockClient>::new().await.unwrap();
-        assert!(pool.acquire().await.is_none());
+        assert!(pool.acquire(DB_TIMEOUT_SECONDS).await.is_none());
 
         pool.init("conn_str".to_string()).await.unwrap();
         {
-            let _conn = match pool.acquire().await {
+            let _conn = match pool.acquire(DB_TIMEOUT_SECONDS).await {
                 Some(conn) => conn,
                 None => panic!("should get some"),
             };
-            assert!(pool.acquire().await.is_none());
+            assert!(pool.acquire(DB_TIMEOUT_SECONDS).await.is_none());
         } // conn drops here, and is released automatically
 
-        assert!(pool.acquire().await.is_some());
-        assert!(pool.acquire().await.is_some());
+        assert!(pool.acquire(DB_TIMEOUT_SECONDS).await.is_some());
+        assert!(pool.acquire(DB_TIMEOUT_SECONDS).await.is_some());
     }
 }

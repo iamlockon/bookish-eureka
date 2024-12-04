@@ -8,7 +8,7 @@ use log::{error, info, warn};
 use tokio_postgres::types::{ToSql};
 use crate::server::controller::error::CustomError;
 use crate::server::controller::error::CustomError::{BadRequest, DbError, Timeout};
-use crate::server::controller::DB_TIMEOUT_SECONDS;
+use crate::server::DB_TIMEOUT_SECONDS;
 use crate::server::model::table::{GetTablesResponse, PatchTablesResponse, PostTablesResponse, Table};
 use crate::server::state::AppState;
 
@@ -18,16 +18,16 @@ async fn patch_table(
     id: web::Path<i16>,
     data: web::Data<&AppState>,
 ) -> Result<impl Responder, CustomError> {
-    if let Some(mut conn) = data.get_db_write_pool().acquire().await {
+    if let Some(mut conn) = data.get_db_write_pool().acquire(DB_TIMEOUT_SECONDS).await {
         let client = conn.client.as_mut().unwrap();
         match client.transaction().await {
             Ok(txn) => {
                 let id = id.into_inner();
                 let params: &[&(dyn ToSql + Sync)] = &[&id];
-                // check table availability
                 let sleep = time::sleep(Duration::new(DB_TIMEOUT_SECONDS, 0));
                 tokio::pin!(sleep);
                 tokio::select! {
+                    // check table availability
                     result = txn.query_one(r#"SELECT bill_id FROM "table" WHERE id = $1 FOR UPDATE"#, params) => {
                         match result {
                             Ok(row) => {
@@ -108,7 +108,7 @@ async fn patch_table(
 #[get("/v1/tables")]
 /// get tables
 async fn get_tables(data: web::Data<&AppState>) -> Result<impl Responder, CustomError> {
-    if let Some(conn) = data.get_db_read_pool().acquire().await {
+    if let Some(conn) = data.get_db_read_pool().acquire(DB_TIMEOUT_SECONDS).await {
         let client = conn.client.as_ref().unwrap();
         return match client.query(r##"
             SELECT t.id as t_id, b.id as b_id, CASE WHEN b.id IS NULL THEN 'Y' ELSE 'N' END AS availabie
@@ -147,7 +147,7 @@ async fn post_table(
     id: web::Path<i16>,
     data: web::Data<&AppState>,
 ) -> Result<impl Responder, CustomError> {
-    if let Some(mut conn) = data.get_db_write_pool().acquire().await {
+    if let Some(mut conn) = data.get_db_write_pool().acquire(DB_TIMEOUT_SECONDS).await {
         let client = conn.client.as_mut().unwrap();
         match client.transaction().await {
             Ok(txn) => {
